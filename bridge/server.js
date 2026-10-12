@@ -30,12 +30,14 @@ async function githubRequest(path, options = {}) {
         'Authorization': `Bearer ${activeToken}`,
         'Accept': 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
+        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
         ...options.headers
     };
 
     const response = await fetch(url.toString(), {
         method: options.method || 'GET',
-        headers: headers
+        headers: headers,
+        body: options.body
     });
 
     if (!response.ok) {
@@ -43,13 +45,17 @@ async function githubRequest(path, options = {}) {
         throw new Error(`GitHub API error ${response.status}: ${error}`);
     }
 
-    return response.json();
+    // Some endpoints (e.g. DELETE) answer with an empty or non-JSON body
+    const text = await response.text();
+    return text ? JSON.parse(text) : null;
 }
 
 // Get list of codespaces for the authenticated user
 async function listMyCodespaces() {
     const data = await githubRequest('/user/codespaces');
-    return data.map((cs) => ({
+    // GET /user/codespaces returns { total_count, codespaces } (defensively also accept a bare array)
+    const items = Array.isArray(data) ? data : (data && data.codespaces) || [];
+    return items.map((cs) => ({
         id: cs.id,
         name: cs.name,
         repository: cs.repository,
@@ -82,18 +88,24 @@ async function getCodespace(name) {
     };
 }
 
-// Create a new codespace
+// Create a new codespace in a repository (the repository comes from the path)
 async function createCodespace(repo, options = {}) {
-    const data = await githubRequest('/user/codespaces', {
-        method: 'POST',
-        body: JSON.stringify({
-            repository: repo,
-            display_name: options.displayName,
-            docker_image: options.dockerImage,
-            template: options.template,
-            compute_type: options.computeType
-        })
-    });
+    const [owner, repoName] = String(repo).split('/');
+    if (!owner || !repoName) {
+        throw new Error(`Invalid repository "${repo}": expected owner/repo`);
+    }
+    const data = await githubRequest(
+        `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/codespaces`,
+        {
+            method: 'POST',
+            body: JSON.stringify({
+                display_name: options.displayName,
+                ref: options.ref,
+                machine: options.machine,
+                location: options.location
+            })
+        }
+    );
     return {
         id: data.id,
         name: data.name,
@@ -148,16 +160,16 @@ async function restartCodespace(name) {
     };
 }
 
-// Delete a codespace
+// Delete a codespace (DELETE /user/codespaces/{name} → 202 Accepted, empty JSON body)
 async function deleteCodespace(name) {
-    const data = await githubRequest(`/user/codespaces/${encodeURIComponent(name)}/delete`, {
-        method: 'POST'
+    await githubRequest(`/user/codespaces/${encodeURIComponent(name)}`, {
+        method: 'DELETE'
     });
     return {
-        id: data.id,
-        name: data.name,
-        state: data.state,
-        status: data.status
+        id: null,
+        name: name,
+        state: 'deleted',
+        status: 'ended'
     };
 }
 

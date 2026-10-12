@@ -5,6 +5,7 @@ import com.clineagentmobile.model.GitRef
 import com.clineagentmobile.model.Repository
 import com.clineagentmobile.model.User
 import com.google.gson.annotations.SerializedName
+import retrofit2.Response
 import retrofit2.http.*
 
 /**
@@ -32,12 +33,12 @@ interface GitHubApiService {
         @Header("Authorization") token: String,
         @Path("owner") owner: String,
         @Path("repo") repo: String
-    ): List<Codespace>
+    ): CodespaceListResponse
 
     @GET("user/codespaces")
     suspend fun listMyCodespaces(
         @Header("Authorization") token: String
-    ): List<Codespace>
+    ): CodespaceListResponse
 
     @GET("user/codespaces/{codespace_name}")
     suspend fun getMyCodespace(
@@ -45,10 +46,12 @@ interface GitHubApiService {
         @Path("codespace_name") name: String
     ): Codespace
 
-    @POST("user/codespaces")
-    suspend fun createCodespace(
+    @POST("repos/{owner}/{repo}/codespaces")
+    suspend fun createCodespaceInRepo(
         @Header("Authorization") token: String,
-        @Body body: CodespaceCreateRequest
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Body body: CodespaceCreateRequest = CodespaceCreateRequest()
     ): Codespace
 
     @POST("user/codespaces/{codespace_name}/start")
@@ -69,11 +72,11 @@ interface GitHubApiService {
         @Path("codespace_name") name: String
     ): Codespace
 
-    @POST("user/codespaces/{codespace_name}/delete")
+    @DELETE("user/codespaces/{codespace_name}")
     suspend fun deleteCodespace(
         @Header("Authorization") token: String,
         @Path("codespace_name") name: String
-    ): Codespace
+    ): Response<Void>
 
     @GET("repos/{owner}/{repo}/branches")
     suspend fun getBranches(
@@ -105,24 +108,25 @@ interface GitHubApiService {
 }
 
 /**
- * Request body for creating a Codespace
+ * Request body for creating a Codespace.
+ * POST /repos/{owner}/{repo}/codespaces takes the repository from the path;
+ * every body field is optional (GitHub applies defaults).
  */
 data class CodespaceCreateRequest(
-    @SerializedName("repository") val repository: String,
     @SerializedName("display_name") val displayName: String? = null,
+    @SerializedName("ref") val ref: String? = null,
+    @SerializedName("machine") val machine: String? = null,
     @SerializedName("location") val location: String? = null,
-    @SerializedName("purpose") val purpose: String? = null,
-    @SerializedName("custom_ip_rules") val customIpRules: List<String>? = null,
-    @SerializedName("options") val options: CodespaceOptions? = null
-) {
-    data class CodespaceOptions(
-        @SerializedName("docker_image") val dockerImage: String? = null,
-        @SerializedName("template") val template: String? = null,
-        @SerializedName("compute_type") val computeType: String? = null,
-        @SerializedName("profile") val profile: String? = null,
-        @SerializedName("volumes") val volumes: List<String>? = null,
-        @SerializedName("title") val title: String? = null,
-        @SerializedName("workspace_username") val workspaceUsername: String? = null,
-        @SerializedName("stop_after_create") val stopAfterCreate: Boolean? = null
-    )
-}
+    @SerializedName("devcontainer_path") val devcontainerPath: String? = null,
+    @SerializedName("idle_timeout_minutes") val idleTimeoutMinutes: Int? = null,
+    @SerializedName("retention_period_minutes") val retentionPeriodMinutes: Int? = null
+)
+
+/**
+ * Wrapper returned by the list endpoints (GET /user/codespaces and
+ * GET /repos/{owner}/{repo}/codespaces): { "total_count": N, "codespaces": [...] }
+ */
+data class CodespaceListResponse(
+    @SerializedName("total_count") val totalCount: Int = 0,
+    @SerializedName("codespaces") val codespaces: List<Codespace> = emptyList()
+)

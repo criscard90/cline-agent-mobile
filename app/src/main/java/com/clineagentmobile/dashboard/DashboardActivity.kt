@@ -16,7 +16,6 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.clineagentmobile.R
 import com.clineagentmobile.model.Codespace
-import com.clineagentmobile.network.CodespaceCreateRequest
 import com.clineagentmobile.network.GitHubApiService
 import com.clineagentmobile.network.RetrofitClient
 import com.clineagentmobile.settings.SettingsActivity
@@ -93,7 +92,7 @@ class DashboardActivity : AppCompatActivity() {
         setLoading(true)
         lifecycleScope.launch {
             runCatching { api.listMyCodespaces("Bearer $token") }
-                .onSuccess { showList(it) }
+                .onSuccess { showList(it.codespaces) }
                 .onFailure { showError(it) }
             setLoading(false)
         }
@@ -122,11 +121,16 @@ class DashboardActivity : AppCompatActivity() {
 
     private fun createCodespace(repository: String) {
         val token = token() ?: return
-        if (repository.isBlank()) return
+        val parts = repository.trim().split("/")
+        if (parts.size != 2 || parts.any { it.isBlank() }) {
+            errorText.text = getString(R.string.dashboard_create_invalid_repo)
+            errorText.visibility = View.VISIBLE
+            return
+        }
         setLoading(true)
         lifecycleScope.launch {
             runCatching {
-                api.createCodespace("Bearer $token", CodespaceCreateRequest(repository = repository))
+                api.createCodespaceInRepo("Bearer $token", parts[0], parts[1])
             }.onSuccess {
                 Toast.makeText(this@DashboardActivity, R.string.dashboard_action_done, Toast.LENGTH_SHORT).show()
                 load()
@@ -181,12 +185,25 @@ class DashboardActivity : AppCompatActivity() {
 
     private fun showError(e: Throwable) {
         val message = if (e is HttpException) {
-            "HTTP ${e.code()}: ${e.message()}"
+            val detail = e.response()?.errorBody()?.string()?.let { parseGithubError(it) }
+            "HTTP ${e.code()}: ${detail ?: e.message()}"
         } else {
             e.localizedMessage ?: e.javaClass.simpleName
         }
         errorText.text = getString(R.string.dashboard_action_error, message)
         errorText.visibility = View.VISIBLE
+    }
+
+    /** Extracts the human-readable "message" (and "errors") from a GitHub API error body. */
+    private fun parseGithubError(body: String): String? = try {
+        val json = org.json.JSONObject(body)
+        val msg = json.optString("message").takeIf { it.isNotBlank() }
+        val errors = json.optJSONArray("errors")
+            ?.let { arr -> (0 until arr.length()).joinToString("; ") { i -> arr.optString(i) } }
+            ?.takeIf { it.isNotBlank() }
+        listOfNotNull(msg, errors).joinToString(" — ").takeIf { it.isNotBlank() }
+    } catch (_: Exception) {
+        null
     }
 
     companion object {

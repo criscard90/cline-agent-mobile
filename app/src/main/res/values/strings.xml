@@ -124,6 +124,7 @@
     <string name="dashboard_delete_confirm">Eliminare lo Codespace "%s"? Operazione irreversibile.</string>
     <string name="dashboard_action_done">Operazione completata</string>
     <string name="dashboard_action_error">Errore: %s</string>
+    <string name="dashboard_create_invalid_repo">Formato non valido: usa proprietario/nome-repo (es. octocat/hello-world)</string>
 
     <!-- Common -->
     <string name="yes">Sì</string>

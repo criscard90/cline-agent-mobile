@@ -1,6 +1,14 @@
 package com.clineagentmobile.model
 
+import com.google.gson.JsonDeserializationContext
+import com.google.gson.JsonDeserializer
+import com.google.gson.JsonElement
+import com.google.gson.JsonPrimitive
+import com.google.gson.JsonSerializationContext
+import com.google.gson.JsonSerializer
+import com.google.gson.annotations.JsonAdapter
 import com.google.gson.annotations.SerializedName
+import java.lang.reflect.Type
 
 /**
  * Represents a GitHub Codespace with its current state and configuration.
@@ -9,10 +17,10 @@ data class Codespace(
     @SerializedName("id") val id: String,
     @SerializedName("name") val name: String,
     @SerializedName("repository") val repository: Repository,
-    @SerializedName("container_opened_at") val containerOpenedAt: Long? = null,
-    @SerializedName("updated_at") val updatedAt: Long? = null,
+    @SerializedName("container_opened_at") val containerOpenedAt: String? = null,
+    @SerializedName("updated_at") val updatedAt: String? = null,
     @SerializedName("state") val state: State = State.STOPPED,
-    @SerializedName("status") val status: Status = Status.UNKNOWN,
+    @SerializedName("status") val status: Status? = null,
     @SerializedName("url") val url: String? = null,
     @SerializedName("web_url") val webUrl: String? = null,
     @SerializedName("ssh_url") val sshUrl: String? = null,
@@ -29,47 +37,79 @@ data class Codespace(
     @SerializedName("ssh_ready") val sshReady: Boolean = false,
     @SerializedName("container_ready") val containerReady: Boolean = false
 ) {
+    @JsonAdapter(StateAdapter::class)
     enum class State {
-        @SerializedName("running") RUNNING,
-        @SerializedName("stopped") STOPPED,
-        @SerializedName("paused") PAUSED,
-        @SerializedName("creating") CREATING,
-        @SerializedName("deleting") DELETING,
-        @SerializedName("unknown") UNKNOWN
+        RUNNING, STOPPED, PAUSED, CREATING, DELETING, UNKNOWN;
+
+        companion object {
+            /**
+             * Lenient mapping of GitHub's `state` values (e.g. "available",
+             * "provisioning", "shutting_down") to local states. Unknown
+             * values map to UNKNOWN instead of failing the whole parse.
+             */
+            fun fromApi(raw: String?): State = when (raw?.lowercase()?.replace("_", "")?.replace("-", "")) {
+                "available", "running", "started", "active" -> RUNNING
+                "stopped", "shutdown", "shuttingdown", "archived", "moved" -> STOPPED
+                "paused", "awaiting", "blocked", "suspended" -> PAUSED
+                "creating", "created", "queued", "provisioning", "starting",
+                "rebuilding", "rebooting", "updating" -> CREATING
+                "deleting", "deleted", "removed" -> DELETING
+                else -> UNKNOWN
+            }
+
+            fun toApi(state: State): String = when (state) {
+                RUNNING -> "available"
+                STOPPED -> "stopped"
+                PAUSED -> "paused"
+                CREATING -> "creating"
+                DELETING -> "deleting"
+                UNKNOWN -> "unknown"
+            }
+        }
     }
 
+    @JsonAdapter(StatusAdapter::class)
     enum class Status {
-        @SerializedName("pending") PENDING,
-        @SerializedName("ready") READY,
-        @SerializedName("error") ERROR,
-        @SerializedName("select_repositories") SELECT_REPOSITORIES,
-        @SerializedName("stopped") STOPPED,
-        @SerializedName("unknown") UNKNOWN
+        PENDING, READY, ERROR, SELECT_REPOSITORIES, STOPPED, UNKNOWN;
+
+        companion object {
+            fun fromApi(raw: String?): Status = when (raw?.lowercase()?.replace("_", "")) {
+                "pending", "provisioning" -> PENDING
+                "ready", "available" -> READY
+                "error", "failed" -> ERROR
+                "selectrepositories" -> SELECT_REPOSITORIES
+                "stopped", "ended" -> STOPPED
+                else -> UNKNOWN
+            }
+
+            fun toApi(status: Status): String = when (status) {
+                PENDING -> "pending"
+                READY -> "ready"
+                ERROR -> "error"
+                SELECT_REPOSITORIES -> "select_repositories"
+                STOPPED -> "stopped"
+                UNKNOWN -> "unknown"
+            }
+        }
     }
 
-    val isRunning: Boolean = state == State.RUNNING
-    val isStopped: Boolean = state == State.STOPPED
-    val isActive: Boolean = state == State.RUNNING || state == State.PAUSED
+    // Computed via get(): Gson creates instances without running the constructor,
+    // so stored vals (isRunning, …) would keep their zero value.
+    val isRunning: Boolean get() = state == State.RUNNING
+    val isStopped: Boolean get() = state == State.STOPPED
+    val isActive: Boolean get() = state == State.RUNNING || state == State.PAUSED
     companion object {
         @Suppress("UNCHECKED_CAST")
         fun fromJson(json: Map<String, Any>): Codespace {
             val repositoryMap = json["repository"] as? Map<String, Any> ?: emptyMap()
             return Codespace(
-                id = json["id"] as? String ?: "unknown",
+                id = (json["id"] as? String) ?: (json["id"] as? Number)?.toString() ?: "unknown",
                 name = json["name"] as? String ?: "Unnamed",
                 repository = Repository.fromJson(repositoryMap),
-                containerOpenedAt = (json["container_opened_at"] as? Number)?.toLong(),
-                updatedAt = (json["updated_at"] as? Number)?.toLong(),
-                state = try {
-                    State.valueOf((json["state"] as? String)?.uppercase() ?: "UNKNOWN")
-                } catch (e: Exception) {
-                    State.UNKNOWN
-                },
-                status = try {
-                    Status.valueOf((json["status"] as? String)?.uppercase() ?: "UNKNOWN")
-                } catch (e: Exception) {
-                    Status.UNKNOWN
-                },
+                containerOpenedAt = json["container_opened_at"] as? String,
+                updatedAt = json["updated_at"] as? String,
+                state = State.fromApi(json["state"] as? String),
+                status = Status.fromApi(json["status"] as? String),
                 url = json["url"] as? String,
                 webUrl = json["web_url"] as? String,
                 sshUrl = json["ssh_url"] as? String,
@@ -86,5 +126,49 @@ data class Codespace(
                 containerReady = json["container_ready"] as? Boolean ?: false
             )
         }
+    }
+}
+
+/**
+ * Lenient (de)serializer for [Codespace.State]: accepts any string GitHub
+ * returns — including values introduced in the future — without failing the
+ * parse of the whole response.
+ */
+class StateAdapter : JsonSerializer<Codespace.State>, JsonDeserializer<Codespace.State> {
+    override fun serialize(
+        src: Codespace.State,
+        typeOfSrc: Type,
+        context: JsonSerializationContext
+    ): JsonElement = JsonPrimitive(Codespace.State.toApi(src))
+
+    override fun deserialize(
+        json: JsonElement,
+        typeOfT: Type,
+        context: JsonDeserializationContext
+    ): Codespace.State = try {
+        Codespace.State.fromApi(json.asString)
+    } catch (e: Exception) {
+        Codespace.State.UNKNOWN
+    }
+}
+
+/**
+ * Lenient (de)serializer for [Codespace.Status]; see [StateAdapter].
+ */
+class StatusAdapter : JsonSerializer<Codespace.Status>, JsonDeserializer<Codespace.Status> {
+    override fun serialize(
+        src: Codespace.Status,
+        typeOfSrc: Type,
+        context: JsonSerializationContext
+    ): JsonElement = JsonPrimitive(Codespace.Status.toApi(src))
+
+    override fun deserialize(
+        json: JsonElement,
+        typeOfT: Type,
+        context: JsonDeserializationContext
+    ): Codespace.Status = try {
+        Codespace.Status.fromApi(json.asString)
+    } catch (e: Exception) {
+        Codespace.Status.UNKNOWN
     }
 }
