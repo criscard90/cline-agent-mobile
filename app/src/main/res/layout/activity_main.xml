@@ -99,7 +99,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="@string/home_bridge_settings" />
+            android:text="@string/nav_settings" />
     </LinearLayout>
 </ScrollView>
 

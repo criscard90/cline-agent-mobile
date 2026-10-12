@@ -3,7 +3,8 @@ const WebSocket = require('ws');
 
 // Configuration
 const PORT = process.env.PORT || 3000;
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+// GitHub token: env var first, otherwise the token sent by the app via 'auth'
+let activeToken = process.env.GITHUB_TOKEN || null;
 const GITHUB_REPO = process.env.GITHUB_REPO || '';
 const GITHUB_OWNER = process.env.GITHUB_OWNER || '';
 
@@ -21,9 +22,12 @@ let serverState = {
 
 // GitHub REST API helper
 async function githubRequest(path, options = {}) {
+    if (!activeToken) {
+        throw new Error('No GitHub token: set GITHUB_TOKEN env var or authenticate from the app');
+    }
     const url = new URL(path, 'https://api.github.com');
     const headers = {
-        'Authorization': `Bearer ${GITHUB_TOKEN}`,
+        'Authorization': `Bearer ${activeToken}`,
         'Accept': 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
         ...options.headers
@@ -216,23 +220,29 @@ function handleMessage(clientId, message) {
             // Connection already handled via WebSocket
             break;
 
-        case 'auth':
-            if (GITHUB_TOKEN) {
+        case 'auth': {
+            // The app can provide its own token: use it as fallback for the env var
+            const clientToken = message.payload && message.payload.token;
+            if (clientToken) {
+                activeToken = clientToken;
+            }
+            if (activeToken) {
                 serverState.authenticated = true;
                 serverState.connected = true;
                 serverState.status = 'authenticated';
                 broadcastState();
-                ws.send(JSON.stringify({
+                wsFor(clientId).send(JSON.stringify({
                     type: 'auth_success',
                     payload: { bridgeState: serverState }
                 }));
             } else {
-                ws.send(JSON.stringify({
+                wsFor(clientId).send(JSON.stringify({
                     type: 'auth_error',
                     payload: { error: 'No GITHUB_TOKEN configured' }
                 }));
             }
             break;
+        }
 
         case 'ping':
             ws.send(JSON.stringify({
@@ -336,7 +346,7 @@ wss.on('connection', (ws, request) => {
 // Start server
 server.listen(PORT, () => {
     console.log(`Bridge server listening on port ${PORT}`);
-    console.log(`GITHUB_TOKEN: ${GITHUB_TOKEN ? 'Configured' : 'Not configured'}`);
+    console.log(`GITHUB_TOKEN: ${activeToken ? 'Configured' : 'Not configured (set env var or authenticate from the app)'}`);
 });
 
 // Graceful shutdown

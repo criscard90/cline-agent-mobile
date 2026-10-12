@@ -36,6 +36,12 @@
             android:exported="false"
             android:theme="@style/Theme.ClineAgentMobile" />
 
+        <!-- Settings Activity (GitHub token + bridge URL) -->
+        <activity
+            android:name=".settings.SettingsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ClineAgentMobile" />
+
         <!-- Chat Activity -->
         <activity
             android:name=".chat.ChatActivity"

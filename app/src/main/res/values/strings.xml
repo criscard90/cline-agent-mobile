@@ -95,6 +95,36 @@
     <string name="home_bridge_dialog_title">URL bridge WebSocket</string>
     <string name="home_bridge_dialog_hint">ws://192.168.1.100:3000</string>
 
+    <!-- Settings - Setup (token + bridge) -->
+    <string name="settings_token_section">Token GitHub (Personal Access Token)</string>
+    <string name="settings_token_hint">ghp_… oppure github_pat_…</string>
+    <string name="settings_token_save">Salva e verifica</string>
+    <string name="settings_token_missing">Token non configurato</string>
+    <string name="settings_token_validating">Verifica del token…</string>
+    <string name="settings_token_create">Crea token su GitHub</string>
+    <string name="settings_token_scopes">Scopes necessari: repo, codespace</string>
+    <string name="settings_token_saved">Token salvato e verificato: %s</string>
+    <string name="settings_token_invalid">Token non valido: %s</string>
+    <string name="settings_bridge_section">Bridge WebSocket</string>
+    <string name="settings_bridge_hint">wss://TUO-CODESPACE-3000.app.github.dev</string>
+    <string name="settings_bridge_save">Salva e avvia bridge</string>
+    <string name="settings_bridge_note">Il bridge ascolta sulla porta 3000 dello Codespace: deve essere impostata come pubblica. Per Codespaces usa wss:// (la porta 80/443 è già inoltrata).</string>
+    <string name="settings_bridge_saved">URL bridge salvato, bridge in avvio…</string>
+
+    <!-- Dashboard - setup e azioni -->
+    <string name="dashboard_create_title">Crea Codespace</string>
+    <string name="dashboard_create_hint">owner/repository (es. octocat/hello-world)</string>
+    <string name="dashboard_refresh">Aggiorna</string>
+    <string name="dashboard_open">Apri</string>
+    <string name="dashboard_loading">Caricamento Codespace…</string>
+    <string name="dashboard_no_token">Token GitHub mancante: configuralo nelle Impostazioni.</string>
+    <string name="dashboard_status_creating">Creazione…</string>
+    <string name="dashboard_status_deleting">Eliminazione…</string>
+    <string name="dashboard_status_unknown">Sconosciuto</string>
+    <string name="dashboard_delete_confirm">Eliminare lo Codespace "%s"? Operazione irreversibile.</string>
+    <string name="dashboard_action_done">Operazione completata</string>
+    <string name="dashboard_action_error">Errore: %s</string>
+
     <!-- Common -->
     <string name="yes">Sì</string>
     <string name="no">No</string>
