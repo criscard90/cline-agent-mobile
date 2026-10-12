@@ -60,7 +60,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          path: app/build/outputs/apk/release/app-release.apk
           retention-days: 30
 
   release:
@@ -85,7 +85,7 @@ jobs:
       - name: Rename release assets
         run: |
           cp dist/debug/app-debug.apk cline-agent-mobile-${{ github.ref_name }}-debug.apk
-          cp dist/release/app-release-unsigned.apk cline-agent-mobile-${{ github.ref_name }}-release.apk
+          cp dist/release/app-release.apk cline-agent-mobile-${{ github.ref_name }}-release.apk
           ls -la *.apk
 
       - name: Create GitHub Release
