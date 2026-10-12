@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Cline Agent Mobile</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">Home</string>
+    <string name="nav_dashboard">Dashboard</string>
+    <string name="nav_chat">Chat</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Authentication -->
+    <string name="sign_in_title">Accedi a GitHub</string>
+    <string name="sign_in_subtitle">Autenticazione OAuth 2.0</string>
+    <string name="sign_in_button">Apri browser di autenticazione</string>
+    <string name="sign_in_loading">Accesso in corso…</string>
+    <string name="signed_in_as">Accesso come: %s</string>
+    <string name="sign_out">Disconnettiti</string>
+
+    <!-- Dashboard -->
+    <string name="dashboard_title">Dashboard</string>
+    <string name="dashboard_no_codespaces">Nessun Codespace attivo</string>
+    <string name="dashboard_create">Crea Codespace</string>
+    <string name="dashboard_start">Avvia</string>
+    <string name="dashboard_stop">Ferma</string>
+    <string name="dashboard_restart">Riavvia</string>
+    <string name="dashboard_delete">Elimina</string>
+    <string name="dashboard_status_connecting">Connessione…</string>
+    <string name="dashboard_status_connected">Connesso</string>
+    <string name="dashboard_status_disconnected">Disconnesso</string>
+    <string name="dashboard_status_stopped">Fermato</string>
+    <string name="dashboard_status_running">In esecuzione</string>
+    <string name="dashboard_status_paused">In pausa</string>
+
+    <!-- Chat -->
+    <string name="chat_title">Chat</string>
+    <string name="chat_placeholder">Digita un comando o chiedi all\'agente AI…</string>
+    <string name="chat_send">Invia</string>
+    <string name="chat_stop">Ferma generazione</string>
+    <string name="chat_model">Modello: %s</string>
+    <string name="chat_switch_model">Cambia modello</string>
+    <string name="chat_fast">Velocità: Alta</string>
+    <string name="chat_voice">Voce</string>
+    <string name="chat_history">Cronologia</string>
+
+    <!-- Action Cards -->
+    <string name="action_approve">Approva</string>
+    <string name="action_deny">Rifiuta</string>
+    <string name="action_cancel">Annulla</string>
+    <string name="action_text">Testo del comando</string>
+    <string name="action_files">%d file interessati</string>
+    <string name="action_terminal">Terminale</string>
+    <string name="action_file_edit">Modifica file</string>
+
+    <!-- Diff Viewer -->
+    <string name="diff_viewer">Visualizzatore Diff</string>
+    <string name="diff_added">+ Aggiunto</string>
+    <string name="diff_removed">- Rimosso</string>
+    <string name="diff_modified">~ Modificato</string>
+    <string name="diff_context">Contesto</string>
+    <string name="diff_accept">Accetta</string>
+    <string name="diff_reject">Rifiuta</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Impostazioni</string>
+    <string name="settings_general">Generale</string>
+    <string name="settings_appearance">Aspetto</string>
+    <string name="settings_about">Informazioni</string>
+    <string name="settings_api_keys">Chiavi API</string>
+    <string name="settings_model_selector">Selettore modelli</string>
+    <string name="settings_budget">Piano e budget</string>
+    <string name="settings_language">Lingua</string>
+    <string name="settings_reset">Reimposta</string>
+
+    <!-- Bridge -->
+    <string name="bridge_status_connected">Bridge attivo</string>
+    <string name="bridge_status_disconnected">Bridge in attesa</string>
+    <string name="bridge_reconnecting">Riconexione…</string>
+    <string name="bridge_reconnect">Riconnetti</string>
+
+    <!-- Errors -->
+    <string name="error_generic">Si è verificato un errore</string>
+    <string name="error_network">Errore di rete. Controlla la connessione.</string>
+    <string name="error_auth">Errore di autenticazione. Riprova.</string>
+    <string name="error_saved">Salvato!</string>
+    <string name="error_not_saved">Salvataggio fallito</string>
+
+    <!-- Common -->
+    <string name="yes">Sì</string>
+    <string name="no">No</string>
+    <string name="cancel">Annulla</string>
+    <string name="ok">OK</string>
+    <string name="loading">Caricamento…</string>
+    <string name="retry">Riprova</string>
+    <string name="delete">Elimina</string>
+    <string name="edit">Modifica</string>
+    <string name="save">Salva</string>
+    <string name="close">Chiudi</string>
+    <string name="connect">Connetti</string>
+    <string name="disconnect">Disconnetti</string>
+</resources>

@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Primary brand colors -->
+    <color name="primary">#6750A4</color>
+    <color name="primary_variant">#764BA2</color>
+    <color name="on_primary">#FFFFFF</color>
+
+    <!-- Secondary colors -->
+    <color name="secondary">#625B71</color>
+    <color name="secondary_variant">#75716E</color>
+    <color name="on_secondary">#FFFFFF</color>
+
+    <!-- Background colors -->
+    <color name="background">#FFFBFC</color>
+    <color name="surface">#FFFBFC</color>
+    <color name="on_background">#1C1B1F</color>
+    <color name="on_surface">#1C1B1F</color>
+    <color name="surface_variant">#E7E0EC</color>
+
+    <!-- Chat colors -->
+    <color name="chat_message_user">#1C1B1F</color>
+    <color name="chat_message_assistant">#FFFFFF</color>
+    <color name="chat_message_assistant_secondary">#F2F2F7</color>
+    <color name="chat_input_background">#F2F2F7</color>
+
+    <!-- Status colors -->
+    <color name="status_running">#34A853</color>
+    <color name="status_stopped">#EA4335</color>
+    <color name="status_paused">#FBBC04</color>
+    <color name="status_connecting">#5F6368</color>
+    <color name="status_connected">#34A853</color>
+    <color name="status_disconnected">#EA4335</color>
+
+    <!-- Action card colors -->
+    <color name="action_approve">#34A853</color>
+    <color name="action_deny">#EA4335</color>
+
+    <!-- Diff colors -->
+    <color name="diff_add">#34A853</color>
+    <color name="diff_remove">#EA4335</color>
+    <color name="diff_remove_background">#FAD6D6</color>
+    <color name="diff_add_background">#D9F2DD</color>
+    <color name="diff_context">#1C1B1F</color>
+
+    <!-- Error and warning -->
+    <color name="error">#EA4335</color>
+    <color name="on_error">#FFFFFF</color>
+    <color name="warning">#FBBC04</color>
+
+    <!-- Divider -->
+    <color name="divider">#E0E0E0</color>
+
+    <!-- Icon colors -->
+    <color name="icon">#5F6368</color>
+    <color name="icon_disabled">#9AA0A6</color>
+</resources>

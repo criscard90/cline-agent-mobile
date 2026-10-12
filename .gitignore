@@ -1,0 +1,19 @@
+# Gradle / Android
+.gradle/
+build/
+app/build/
+local.properties
+*.iml
+.idea/
+# Signing
+*.jks
+*.keystore
+keystore.properties
+release/
+# Node bridge
+bridge/node_modules/
+bridge/.env
+bridge/dist/
+# OS
+.DS_Store
+Thumbs.db

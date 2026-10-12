@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base theme -->
+    <style name="Theme.ClineAgentMobile" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <!-- Primary brand colors -->
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorPrimaryVariant">@color/primary_variant</item>
+        <item name="colorOnPrimary">@color/on_primary</item>
+
+        <!-- Secondary colors -->
+        <item name="colorSecondary">@color/secondary</item>
+        <item name="colorSecondaryVariant">@color/secondary_variant</item>
+        <item name="colorOnSecondary">@color/on_secondary</item>
+
+        <!-- Background colors -->
+        <item name="android:colorBackground">@color/background</item>
+        <item name="colorSurface">@color/surface</item>
+        <item name="colorOnBackground">@color/on_background</item>
+        <item name="colorOnSurface">@color/on_surface</item>
+
+        <!-- Status bar -->
+        <item name="android:statusBarColor">@color/primary</item>
+        <item name="android:navigationBarColor">@color/background</item>
+
+        <!-- Window background -->
+        <item name="android:windowBackground">@color/background</item>
+    </style>
+
+    <!-- Chat theme -->
+    <style name="Theme.ClineAgentMobile.Chat" parent="Theme.ClineAgentMobile">
+        <item name="android:windowBackground">@android:color/transparent</item>
+    </style>
+
+    <!-- Splash screen theme -->
+    <style name="Theme.ClineAgentMobile.Splash" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="android:windowBackground">@drawable/splash_background</item>
+        <item name="android:statusBarColor">@color/primary</item>
+    </style>
+
+    <!-- Dialog theme -->
+    <style name="Theme.ClineAgentMobile.Dialog" parent="Theme.MaterialComponents.DayNight.Dialog.Alert">
+        <item name="colorPrimary">@color/primary</item>
+    </style>
+</resources>
