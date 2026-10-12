@@ -16,6 +16,6 @@
 			"onAutoForward": "silent"
 		}
 	},
-	"postCreateCommand": "cd bridge && npm install",
+	"postCreateCommand": "npm install -g cline && cd bridge && npm install",
 	"postStartCommand": "cd bridge && nohup node server.js > /tmp/cline-bridge.log 2>&1 &"
 }

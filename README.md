@@ -172,6 +172,40 @@ cline-agent-mobile/
 - Encrypted API key storage
 - Free tier AI providers (OpenRouter, Ollama, Gemini)
 
+## 💬 Collegare la Chat a Cline (Bridge nello Codespace)
+
+La chat parla con un **bridge server** (`bridge/server.js`) che gira dentro il tuo GitHub Codespace. Il bridge lancia la **Cline CLI** in modalità headless (`cline --json`) e fa lo streaming della risposta dell'agente all'app via WebSocket.
+
+### 1. Setup una-tantum dello Codespace
+
+Il devcontainer (`.devcontainer/devcontainer.json`) installa già la Cline CLI (`npm install -g cline`) e avvia il bridge sulla **porta 3000** all'avvio. Devi solo dare a Cline un **provider LLM** nello codespace (chiave diversa dal PAT GitHub):
+- esegui `cline auth` una volta nel terminale dello codespace, **oppure**
+- imposta variabili d'ambiente (es. come Codespaces secrets) che il bridge inoltra a Cline:
+  - `CLINE_PROVIDER` (id provider, es. `anthropic`, `openai`)
+  - `CLINE_API_KEY` (la chiave API di quel provider)
+  - `CLINE_MODEL` (opzionale, override del modello)
+  - `CLINE_CWD` (opzionale; di default la root del repo)
+
+### 2. Espone la porta del bridge
+
+Nel pannello **PORTS** dello codespace, imposta la visibilità della porta **3000** su **Public**. Otterrai un URL tipo:
+```
+wss://<nome-codespace>-<porta>-<hash>.app.github.dev
+```
+> ⚠️ Una porta public è raggiungibile da chiunque abbia l'URL. Il bridge quindi **richiede autenticazione**: valida il token GitHub inviato dall'app prima di eseguire qualsiasi comando o l'agente.
+
+### 3. Connetti dall'app
+
+1. In **Settings**, incolla l'URL del bridge (usa `wss://…`) e salva — l'avvio del servizio bridge è automatico.
+2. Assicurati che il PAT GitHub (scopes `repo`, `codespace`) sia salvato — l'app lo invia come token di auth del bridge.
+3. Apri **Chat**. Lo stato diventa verde ("Connesso e autenticato") quando il bridge valida il token; l'input si sblocca e puoi parlare con Cline.
+
+### Note e limitazioni
+
+- **Multi-turn**: ogni turno inietta il recente contesto della conversazione in una sessione Cline fresca (aggira un bug noto della Cline CLI dove il resume `--json --id` è rotto — cline/cline#10856). Costa qualche token in input.
+- **Stop**: il pulsante stop termina il processo Cline in esecuzione.
+- Android blocca `ws://` in cleartext — per test su LAN serve una network security config; `wss://` (Codespaces) funziona out of the box.
+
 ## 📝 License
 
 MIT License - see LICENSE file for details.

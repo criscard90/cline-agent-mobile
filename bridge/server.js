@@ -1,5 +1,7 @@
 const http = require('http');
 const WebSocket = require('ws');
+const { spawn } = require('child_process');
+const path = require('path');
 
 // Configuration
 const PORT = process.env.PORT || 3000;
@@ -7,6 +9,24 @@ const PORT = process.env.PORT || 3000;
 let activeToken = process.env.GITHUB_TOKEN || null;
 const GITHUB_REPO = process.env.GITHUB_REPO || '';
 const GITHUB_OWNER = process.env.GITHUB_OWNER || '';
+
+// Cline CLI integration (headless agent runs)
+const CLINE_BIN = process.env.CLINE_BIN || 'cline';
+// Default to the repo root (parent of bridge/) so the agent operates on the project
+const CLINE_CWD = process.env.CLINE_CWD || path.resolve(__dirname, '..');
+const CLINE_PROVIDER = process.env.CLINE_PROVIDER || '';
+const CLINE_MODEL = process.env.CLINE_MODEL || '';
+const CLINE_API_KEY = process.env.CLINE_API_KEY || '';
+const CLINE_THINKING = process.env.CLINE_THINKING || '';
+// Keep only recent turns when replaying conversation context (costs input tokens)
+const MAX_HISTORY_MESSAGES = parseInt(process.env.CLINE_MAX_HISTORY || '20', 10);
+
+// Per-client auth state and Cline task tracking
+const authedClients = new Set();
+const conversations = new Map();   // clientId -> [{ role, content }]
+const runningTasks = new Map();    // clientId -> ChildProcess
+const partials = new Map();        // clientId -> streamed-so-far text
+const stoppedClients = new Set();  // clientId with an intentional stop
 
 // In-memory storage for connected clients and state
 const clients = new Map();
@@ -194,7 +214,10 @@ function handleWebSocketConnection(ws, request) {
     ws.on('message', (data) => {
         try {
             const message = JSON.parse(data.toString());
-            handleMessage(clientId, message);
+            Promise.resolve(handleMessage(clientId, message)).catch((e) => {
+                console.error('Message handling error:', e);
+                sendTo(clientId, { type: 'error', payload: { error: `Errore interno: ${e.message}` } });
+            });
         } catch (e) {
             ws.send(JSON.stringify({
                 type: 'error',
@@ -205,6 +228,11 @@ function handleWebSocketConnection(ws, request) {
 
     ws.on('close', () => {
         clients.delete(clientId);
+        authedClients.delete(clientId);
+        conversations.delete(clientId);
+        partials.delete(clientId);
+        stoppedClients.delete(clientId);
+        stopCline(clientId);
         console.log(`Client ${clientId} disconnected`);
         broadcastState();
     });
@@ -226,52 +254,105 @@ function handleWebSocketConnection(ws, request) {
     console.log(`Client ${clientId} connected`);
 }
 
-function handleMessage(clientId, message) {
+function requireAuth(clientId) {
+    if (authedClients.has(clientId)) return true;
+    sendTo(clientId, {
+        type: 'error',
+        payload: { error: 'Non autenticato: invia prima un messaggio auth con un token GitHub valido' }
+    });
+    return false;
+}
+
+// Validate the client token against GitHub before trusting it. Only then is the
+// client considered authenticated (and allowed to run commands / the agent).
+async function handleAuth(clientId, message) {
+    const clientToken = message.payload && message.payload.token;
+    try {
+        if (clientToken) {
+            const user = await fetchUser(clientToken);
+            activeToken = clientToken;
+            authedClients.add(clientId);
+            serverState.authenticated = true;
+            serverState.connected = true;
+            serverState.status = 'authenticated';
+            broadcastState();
+            sendTo(clientId, {
+                type: 'auth_success',
+                payload: { bridgeState: serverState, login: user.login }
+            });
+        } else if (activeToken) {
+            // Bridge already has a token (env var): accept the client without one
+            authedClients.add(clientId);
+            serverState.authenticated = true;
+            serverState.connected = true;
+            serverState.status = 'authenticated';
+            broadcastState();
+            sendTo(clientId, {
+                type: 'auth_success',
+                payload: { bridgeState: serverState }
+            });
+        } else {
+            sendTo(clientId, {
+                type: 'auth_error',
+                payload: { error: 'Nessun token GitHub: configura GITHUB_TOKEN oppure autenticati dall\'app' }
+            });
+        }
+    } catch (e) {
+        sendTo(clientId, {
+            type: 'auth_error',
+            payload: { error: `Token non valido: ${e.message}` }
+        });
+    }
+}
+
+function handleChatMessage(clientId, message) {
+    const payload = message.payload || {};
+    const msgObj = payload.message || {};
+    const text = (typeof msgObj.content === 'string' && msgObj.content) || payload.text || '';
+    if (!text.trim()) {
+        sendTo(clientId, { type: 'error', payload: { error: 'Messaggio vuoto' } });
+        return;
+    }
+    runCline(clientId, text.trim());
+}
+
+async function handleMessage(clientId, message) {
     switch (message.type) {
         case 'connect':
             // Connection already handled via WebSocket
             break;
 
-        case 'auth': {
-            // The app can provide its own token: use it as fallback for the env var
-            const clientToken = message.payload && message.payload.token;
-            if (clientToken) {
-                activeToken = clientToken;
-            }
-            if (activeToken) {
-                serverState.authenticated = true;
-                serverState.connected = true;
-                serverState.status = 'authenticated';
-                broadcastState();
-                wsFor(clientId).send(JSON.stringify({
-                    type: 'auth_success',
-                    payload: { bridgeState: serverState }
-                }));
-            } else {
-                wsFor(clientId).send(JSON.stringify({
-                    type: 'auth_error',
-                    payload: { error: 'No GITHUB_TOKEN configured' }
-                }));
-            }
+        case 'auth':
+            await handleAuth(clientId, message);
             break;
-        }
 
         case 'ping':
-            ws.send(JSON.stringify({
-                type: 'pong'
-            }));
+            sendTo(clientId, { type: 'pong' });
+            break;
+
+        case 'chat_message':
+            if (!requireAuth(clientId)) break;
+            handleChatMessage(clientId, message);
+            break;
+
+        case 'chat_stop':
+            stoppedClients.add(clientId);
+            stopCline(clientId);
             break;
 
         case 'command':
-            handleCommand(clientId, message.payload.command);
+            if (!requireAuth(clientId)) break;
+            handleCommand(clientId, message.payload && message.payload.command);
             break;
 
         case 'action_approve':
-            handleActionApprove(clientId, message.payload.actionId);
+            if (!requireAuth(clientId)) break;
+            handleActionApprove(clientId, message.payload && message.payload.actionId);
             break;
 
         case 'action_deny':
-            handleActionDeny(clientId, message.payload.actionId);
+            if (!requireAuth(clientId)) break;
+            handleActionDeny(clientId, message.payload && message.payload.actionId);
             break;
 
         default:
@@ -285,53 +366,53 @@ function handleCommand(clientId, command) {
     // Send command to output channel
     // In a real app, this would use child_process or a terminal API
     const output = `Command executed: ${command}\n`;
-    wsFor(clientId).send(JSON.stringify({
+    sendTo(clientId, {
         type: 'chat_stream',
         payload: { text: output }
-    }));
+    });
 
-    wsFor(clientId).send(JSON.stringify({
+    sendTo(clientId, {
         type: 'chat_message',
         payload: {
             role: 'user',
             text: command,
             timestamp: Date.now()
         }
-    }));
+    });
 
     // Add simulated response
     setTimeout(() => {
         const response = `Output for: ${command}\n[This would be the actual command output]`;
-        wsFor(clientId).send(JSON.stringify({
+        sendTo(clientId, {
             type: 'chat_stream',
             payload: { text: response }
-        }));
+        });
 
-        wsFor(clientId).send(JSON.stringify({
+        sendTo(clientId, {
             type: 'chat_message',
             payload: {
                 role: 'assistant',
                 text: response,
                 timestamp: Date.now()
             }
-        }));
+        });
     }, 1000);
 }
 
 function handleActionApprove(clientId, actionId) {
     console.log(`Action approved: ${actionId}`);
-    wsFor(clientId).send(JSON.stringify({
+    sendTo(clientId, {
         type: 'action_approved',
         payload: { actionId }
-    }));
+    });
 }
 
 function handleActionDeny(clientId, actionId) {
     console.log(`Action denied: ${actionId}`);
-    wsFor(clientId).send(JSON.stringify({
+    sendTo(clientId, {
         type: 'action_denied',
         payload: { actionId }
-    }));
+    });
 }
 
 function wsFor(clientId) {
@@ -340,6 +421,190 @@ function wsFor(clientId) {
         throw new Error(`Client ${clientId} not found`);
     }
     return client;
+}
+
+function sendTo(clientId, obj) {
+    const client = clients.get(clientId);
+    if (client && client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify(obj));
+    }
+}
+
+function msgId() {
+    return Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+// Validate a GitHub token by calling the API; returns the user on success
+async function fetchUser(token) {
+    const response = await fetch('https://api.github.com/user', {
+        method: 'GET',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28'
+        }
+    });
+    if (!response.ok) {
+        throw new Error(`GitHub API ${response.status}`);
+    }
+    return response.json();
+}
+
+function buildClineArgs() {
+    const args = ['--json', '--auto-approve', 'true'];
+    if (CLINE_PROVIDER) args.push('-P', CLINE_PROVIDER);
+    if (CLINE_MODEL) args.push('-m', CLINE_MODEL);
+    if (CLINE_API_KEY) args.push('-k', CLINE_API_KEY);
+    if (CLINE_THINKING) args.push('--thinking', CLINE_THINKING);
+    return args;
+}
+
+// Run a single Cline task for a client. Each turn is a fresh session that
+// replays recent conversation context in the prompt, working around the broken
+// `--id` resume in --json mode (cline/cline#10856). Streams NDJSON events back
+// to the app as chat_stream / chat_message / error bridge messages.
+function runCline(clientId, userText) {
+    stopCline(clientId);
+
+    const history = conversations.get(clientId) || [];
+    const recent = history.slice(-MAX_HISTORY_MESSAGES);
+    const transcript = recent
+        .map(t => `${t.role === 'user' ? 'User' : 'Assistant'}: ${t.content}`)
+        .join('\n\n');
+    const prompt = transcript
+        ? `${transcript}\n\nUser: ${userText}\n\nAssistant:`
+        : userText;
+
+    const args = buildClineArgs();
+    args.push(prompt); // positional prompt
+
+    let child;
+    try {
+        child = spawn(CLINE_BIN, args, { cwd: CLINE_CWD, stdio: ['pipe', 'pipe', 'pipe'] });
+    } catch (e) {
+        sendTo(clientId, { type: 'error', payload: { error: `Impossibile avviare Cline: ${e.message}` } });
+        return;
+    }
+    runningTasks.set(clientId, child);
+    partials.set(clientId, '');
+    // Close stdin so --json doesn't wait for piped input; the prompt is positional
+    try { child.stdin.end(); } catch (e) { /* ignore */ }
+
+    let stdoutBuf = '';
+    let stderrBuf = '';
+    let finalText = null;
+    let spawnError = false;
+
+    child.stdout.on('data', (d) => {
+        stdoutBuf += d.toString();
+        let nl;
+        while ((nl = stdoutBuf.indexOf('\n')) >= 0) {
+            const line = stdoutBuf.slice(0, nl).trim();
+            stdoutBuf = stdoutBuf.slice(nl + 1);
+            if (!line) continue;
+            let evt;
+            try { evt = JSON.parse(line); } catch (e) { continue; }
+            handleClineEvent(clientId, evt);
+            if (evt.type === 'run_result' && typeof evt.text === 'string') {
+                finalText = evt.text;
+            } else if (
+                evt.type === 'agent_event' && evt.event &&
+                evt.event.type === 'done' && finalText == null &&
+                typeof evt.event.text === 'string'
+            ) {
+                finalText = evt.event.text;
+            }
+        }
+    });
+
+    child.stderr.on('data', (d) => { stderrBuf += d.toString(); });
+
+    child.on('error', (err) => {
+        spawnError = true;
+        runningTasks.delete(clientId);
+        sendTo(clientId, { type: 'error', payload: { error: `Cline: ${err.message}` } });
+    });
+
+    child.on('close', (code) => {
+        runningTasks.delete(clientId);
+        const wasStopped = stoppedClients.delete(clientId);
+        const partial = partials.get(clientId) || '';
+        partials.delete(clientId);
+
+        // Flush any trailing stdout without a newline
+        if (stdoutBuf.trim()) {
+            try { handleClineEvent(clientId, JSON.parse(stdoutBuf.trim())); } catch (e) { /* ignore */ }
+        }
+        if (spawnError) return;
+
+        let errMessage = null;
+        if (finalText == null && stderrBuf.trim()) {
+            const lastLine = stderrBuf.trim().split('\n').pop();
+            try {
+                const parsed = JSON.parse(lastLine);
+                if (parsed.type === 'error') errMessage = parsed.message;
+            } catch (e) { /* not JSON */ }
+            if (!errMessage) errMessage = stderrBuf.trim().slice(0, 500);
+        }
+
+        if (finalText != null) {
+            conversations.set(clientId, [
+                ...history,
+                { role: 'user', content: userText },
+                { role: 'assistant', content: finalText }
+            ]);
+            sendTo(clientId, {
+                type: 'chat_message',
+                payload: { message: { id: msgId(), role: 'assistant', content: finalText, timestamp: Date.now() } }
+            });
+        } else if (wasStopped) {
+            conversations.set(clientId, [
+                ...history,
+                { role: 'user', content: userText },
+                { role: 'assistant', content: partial || '(interrotto)' }
+            ]);
+            sendTo(clientId, {
+                type: 'chat_message',
+                payload: { message: { id: msgId(), role: 'assistant', content: partial || '(interrotto)', timestamp: Date.now() } }
+            });
+        } else if (errMessage) {
+            sendTo(clientId, { type: 'error', payload: { error: errMessage } });
+        } else {
+            sendTo(clientId, { type: 'error', payload: { error: `Cline uscito senza output (codice ${code})` } });
+        }
+    });
+}
+
+function handleClineEvent(clientId, evt) {
+    if (evt.type !== 'agent_event' || !evt.event) return;
+    const e = evt.event;
+    if (e.type === 'content_start' || e.type === 'content_update') {
+        const delta = extractDelta(e);
+        if (delta) {
+            partials.set(clientId, (partials.get(clientId) || '') + delta);
+            sendTo(clientId, { type: 'chat_stream', payload: { text: delta } });
+        }
+    } else if (e.type === 'error') {
+        sendTo(clientId, { type: 'error', payload: { error: e.text || e.message || 'Cline error' } });
+    }
+    // other event types (iteration_*, usage, notice, done) are ignored for now
+}
+
+function extractDelta(e) {
+    if (typeof e.text === 'string') return e.text;
+    if (typeof e.content === 'string') return e.content;
+    if (typeof e.delta === 'string') return e.delta;
+    if (typeof e.value === 'string') return e.value;
+    if (typeof e.chunk === 'string') return e.chunk;
+    return '';
+}
+
+function stopCline(clientId) {
+    const child = runningTasks.get(clientId);
+    if (child) {
+        try { child.kill('SIGTERM'); } catch (e) { /* ignore */ }
+        runningTasks.delete(clientId);
+    }
 }
 
 // Create HTTP server
@@ -391,6 +656,11 @@ module.exports = {
     restartCodespace,
     deleteCodespace,
     broadcastState,
-    serverState
+    serverState,
+    // Cline integration + auth helpers (exposed for tests)
+    buildClineArgs,
+    extractDelta,
+    fetchUser,
+    handleMessage
 };
 

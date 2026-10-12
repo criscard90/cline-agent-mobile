@@ -41,6 +41,13 @@
     <string name="chat_fast">Velocità: Alta</string>
     <string name="chat_voice">Voce</string>
     <string name="chat_history">Cronologia</string>
+    <string name="chat_status_not_configured">Bridge non configurato: imposta l\'URL nelle Impostazioni</string>
+    <string name="chat_status_connecting">Connessione al bridge…</string>
+    <string name="chat_status_connected">Connesso al bridge</string>
+    <string name="chat_status_authenticated">Connesso e autenticato</string>
+    <string name="chat_status_disconnected">Disconnesso</string>
+    <string name="chat_status_error">Errore di connessione</string>
+    <string name="chat_bridge_unavailable">Bridge non pronto: controlla l\'URL nelle Impostazioni</string>
 
     <!-- Action Cards -->
     <string name="action_approve">Approva</string>
