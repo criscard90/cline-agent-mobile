@@ -84,6 +84,17 @@
     <string name="error_saved">Salvato!</string>
     <string name="error_not_saved">Salvataggio fallito</string>
 
+    <!-- Home -->
+    <string name="home_subtitle">Gestisci Codespaces e parla con Cline AI</string>
+    <string name="home_status_title">Stato</string>
+    <string name="home_bridge_not_set">Bridge non configurato</string>
+    <string name="home_bridge_set">Bridge: %s</string>
+    <string name="home_github_ok">GitHub: connesso</string>
+    <string name="home_github_missing">GitHub: token mancante</string>
+    <string name="home_bridge_settings">Imposta URL bridge</string>
+    <string name="home_bridge_dialog_title">URL bridge WebSocket</string>
+    <string name="home_bridge_dialog_hint">ws://192.168.1.100:3000</string>
+
     <!-- Common -->
     <string name="yes">Sì</string>
     <string name="no">No</string>
