@@ -100,7 +100,7 @@ object CodespaceBootstrapManager {
         try {
             api.updateCodespacePort(auth, name, BRIDGE_PORT, CodespacePortUpdate("public"))
         } catch (e: HttpException) {
-            val code = e.code() ?: -1
+            val code = e.code()
             val msg = "Endpoint publish port non disponibile (codice $code); " + "pubblica manualmente la porta nelle Impostazioni."
             android.util.Log.w("CodespaceBootstrap", msg, e)
             throw IllegalStateException(msg, e)
