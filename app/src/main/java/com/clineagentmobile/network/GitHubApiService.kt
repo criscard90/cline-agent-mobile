@@ -113,6 +113,33 @@ interface GitHubApiService {
         @Body body: CodespacePortUpdate
     ): CodespacePort
 
+    // --- Contents API per il self-provisioning del bridge (solo PAT) ---
+
+    @GET("repos/{owner}/{repo}/contents/{path}")
+    suspend fun getContent(
+        @Header("Authorization") token: String,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path(value = "path", encoded = true) path: String,
+        @Query("ref") ref: String? = null
+    ): ContentResponse
+
+    @PUT("repos/{owner}/{repo}/contents/{path}")
+    suspend fun putContent(
+        @Header("Authorization") token: String,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path(value = "path", encoded = true) path: String,
+        @Body body: ContentPutRequest
+    ): ContentPutResponse
+
+    @GET("repos/{owner}/{repo}")
+    suspend fun getRepo(
+        @Header("Authorization") token: String,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String
+    ): Repository
+
 }
 
 /**
@@ -149,5 +176,26 @@ data class CodespaceListResponse(
         val id: String,
         @com.google.gson.annotations.SerializedName("port") val port: Int,
         @com.google.gson.annotations.SerializedName("visibility") val visibility: String
+    )
+
+    /** Voce restituita da GET /repos/{o}/{r}/contents/{path} per un file. */
+    data class ContentResponse(
+        @SerializedName("sha") val sha: String,
+        @SerializedName("path") val path: String? = null,
+        @SerializedName("content") val content: String? = null,
+        @SerializedName("encoding") val encoding: String? = null
+    )
+
+    /** Body per PUT /repos/{o}/{r}/contents/{path} (content in Base64). */
+    data class ContentPutRequest(
+        @SerializedName("message") val message: String,
+        @SerializedName("content") val content: String,
+        @SerializedName("sha") val sha: String? = null,
+        @SerializedName("branch") val branch: String? = null
+    )
+
+    /** Risposta di PUT contents (a noi serve solo per conferma). */
+    data class ContentPutResponse(
+        @SerializedName("content") val content: ContentResponse? = null
     )
 

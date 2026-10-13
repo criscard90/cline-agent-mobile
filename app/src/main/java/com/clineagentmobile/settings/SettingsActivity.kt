@@ -161,17 +161,18 @@ class SettingsActivity : AppCompatActivity() {
             val bridgeUrl = CodespaceBootstrapManager.bootstrap(
                 tokenForBootstrap,
                 repoFull,
-                onStep = { step -> bootstrapStatus.text = step },
+                onStep = { step -> runOnUiThread { bootstrapStatus.text = step } },
                 onComplete = { msg ->
-                    bootstrapStatus.text = msg
+                    runOnUiThread { bootstrapStatus.text = msg }
                 }
             )
             prefs.saveBridgeUrl(bridgeUrl)
             bridgeAutoUrl.text = getString(R.string.settings_bridge_auto_url, bridgeUrl)
             bootstrapStatus.text = getString(R.string.settings_bridge_auto_url, bridgeUrl)
             prefs.saveOAuthToken(OAuthToken(accessToken = authToken, tokenType = "Bearer", scope = ""))
-            restartBridgeService()
             tokenStatus.text = getString(R.string.settings_token_saved, authToken.take(4) + "…")
+            android.util.Log.i("SettingsActivity", "Bootstrap OK, bridgeUrl=$bridgeUrl, avvio BridgeService")
+            restartBridgeService()
         } catch (e: Exception) {
             tokenStatus.text = getString(R.string.settings_bridge_error, e.localizedMessage ?: "errore")
             bootstrapStatus.text = getString(R.string.settings_bridge_error, e.localizedMessage ?: "errore")

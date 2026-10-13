@@ -10,6 +10,7 @@ import retrofit2.HttpException
 
 /**
  * Bootstrap automatico a solo PAT. Ogni passaggio è idempotente:
+ *  0. self-provisioning: commit devcontainer+bridge nella repo scelta (via Contents API)
  *  1. cerca un codespace per il repo scelto (eseguendolo)
  *  2. lo crea se manca
  *  3. lo avvia se è fermo
@@ -37,6 +38,10 @@ object CodespaceBootstrapManager {
         val repo = repoFull.trim()
 
         validateRepoFull(repo)
+        val (owner, repoName) = repo.split('/', limit = 2)
+
+        onStep("Provisioning bridge in $repo (auto-commit devcontainer)")
+        BridgeProvisioner.ensureBridgeFiles(api, auth, owner, repoName, onStep)
 
         onStep("Ricerca codespace in $repo")
         val cs = findExisting(api, auth, repo)
@@ -52,6 +57,15 @@ object CodespaceBootstrapManager {
         onStep("Attesa codespace in esecuzione (max 300s)...")
         val running = pollUntilRunning(api, auth, cs.name)
         onStep("Codespace pronto: " + running.name)
+
+        onStep("Verifica bridge server sulla porta $BRIDGE_PORT...")
+        val bridgeReady = waitForBridgeServer(api, auth, cs.name)
+        if (!bridgeReady) {
+            onStep(
+                "Bridge server non risponde sulla porta $BRIDGE_PORT: " +
+                    "apri il codespace, avvia 'node bridge/server.js' e riprova."
+            )
+        }
 
         val portPublished = publishBridgePort(api, auth, cs.name)
         val wssUrl = "wss://" + cs.name + "-" + BRIDGE_PORT + ".app.github.dev"
@@ -108,6 +122,36 @@ object CodespaceBootstrapManager {
             kotlinx.coroutines.delay(POLL_INTERVAL_MS)
         }
         throw IllegalStateException("Timeout: codespace $name non è riuscito a partire entro ${POLL_TIMEOUT_MS / 1000}s.")
+    }
+
+    private suspend fun waitForBridgeServer(
+        api: GitHubApiService,
+        auth: String,
+        name: String
+    ): Boolean {
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val client = okhttp3.OkHttpClient.Builder()
+                .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+            repeat(6) { attempt ->
+                try {
+                    val cs = api.getMyCodespace(auth, name)
+                    val httpUrl = "https://" + cs.name + "-" + BRIDGE_PORT + ".app.github.dev"
+                    val req = okhttp3.Request.Builder().url(httpUrl).get().build()
+                    client.newCall(req).execute().use { resp ->
+                        if (resp.isSuccessful) return@withContext true
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.d(
+                        "CodespaceBootstrap",
+                        "Bridge non ancora raggiungibile (tentativo ${attempt + 1}/6): ${e.message}"
+                    )
+                }
+                kotlinx.coroutines.delay(5_000L)
+            }
+            false
+        }
     }
 
     private suspend fun publishBridgePort(api: GitHubApiService, auth: String, name: String): Boolean {

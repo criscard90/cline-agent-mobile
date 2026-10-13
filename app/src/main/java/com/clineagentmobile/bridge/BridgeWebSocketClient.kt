@@ -69,15 +69,22 @@ class BridgeWebSocketClient(
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                Log.e(TAG, "Bridge WebSocket failed", t)
+                Log.e(TAG, "Bridge WebSocket failed url=$currentUrl code=${response?.code} msg=${response?.message}", t)
                 connected = false
-                listener?.onDisconnected()
+                mainHandler.post {
+                    listener?.onError("WS fallito verso $currentUrl: ${t.message ?: t::class.java.simpleName}")
+                    listener?.onDisconnected()
+                }
                 scheduleReconnect()
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                Log.w(TAG, "Bridge WebSocket closed url=$currentUrl code=$code reason=$reason")
                 connected = false
-                listener?.onDisconnected()
+                mainHandler.post {
+                    listener?.onError("WS chiuso ($code): $reason")
+                    listener?.onDisconnected()
+                }
                 scheduleReconnect()
             }
         })
