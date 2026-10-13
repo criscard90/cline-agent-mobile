@@ -146,4 +146,14 @@
     <string name="close">Chiudi</string>
     <string name="connect">Connetti</string>
     <string name="disconnect">Disconnetti</string>
+
+    <!-- Settings - Codespace bootstrap (automatico) -->
+
+    <string name="settings_bridge_auto_url_hint">URL calcolata automaticamente al bootstrap</string>
+    <string name="settings_bootstrap_section">Codespace (bootstrap automatico)</string>
+    <string name="settings_bootstrap_start">Avvia bootstrap Codespace</string>
+    <string name="settings_bootstrap_status_initial">Token verificato, avvio provisioning…</string>
+    <string name="settings_bridge_error">Bootstrap fallito: %s</string>
+    <string name="settings_bridge_auto_url">URL bridge: %s</string>
+
 </resources>

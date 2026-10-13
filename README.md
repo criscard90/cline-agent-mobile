@@ -172,37 +172,33 @@ cline-agent-mobile/
 - Encrypted API key storage
 - Free tier AI providers (OpenRouter, Ollama, Gemini)
 
-## 💬 Collegare la Chat a Cline (Bridge nello Codespace)
+### 💬 Collega la Chat a Cline — setup automatico a solo PAT
 
-La chat parla con un **bridge server** (`bridge/server.js`) che gira dentro il tuo GitHub Codespace. Il bridge lancia la **Cline CLI** in modalità headless (`cline --json`) e fa lo streaming della risposta dell'agente all'app via WebSocket.
+La chat parla con un **bridge server** (`bridge/server.js`) che gira dentro il tuo GitHub Codespace. L'impostazione è automatica: l'utente inserisce SOLO il PAT GitHub e l'app provvede da sola a creare/avviare il codespace, pubblicare la porta 3000 e ottenere l'URL del bridge.
 
-### 1. Setup una-tantum dello Codespace
+### 1. In Settings, inserisci SOLO il PAT GitHub
 
-Il devcontainer (`.devcontainer/devcontainer.json`) installa già la Cline CLI (`npm install -g cline`) e avvia il bridge sulla **porta 3000** all'avvio. Devi solo dare a Cline un **provider LLM** nello codespace (chiave diversa dal PAT GitHub):
-- esegui `cline auth` una volta nel terminale dello codespace, **oppure**
-- imposta variabili d'ambiente (es. come Codespaces secrets) che il bridge inoltra a Cline:
-  - `CLINE_PROVIDER` (id provider, es. `anthropic`, `openai`)
-  - `CLINE_API_KEY` (la chiave API di quel provider)
-  - `CLINE_MODEL` (opzionale, override del modello)
-  - `CLINE_CWD` (opzionale; di default la root del repo)
+Inserisci il token (opzionale: `ghp_…` oppure `github_pat_…`) e tocca **Salva e verifica**.
+L'app verifica che il token sia valido (scope `repo`, `codespace`) e lo conserva.
 
-### 2. Espone la porta del bridge
+### 2. Bootstrap automatico (a clic)
 
-Nel pannello **PORTS** dello codespace, imposta la visibilità della porta **3000** su **Public**. Otterrai un URL tipo:
-```
-wss://<nome-codespace>-<porta>-<hash>.app.github.dev
-```
-> ⚠️ Una porta public è raggiungibile da chiunque abbia l'URL. Il bridge quindi **richiede autenticazione**: valida il token GitHub inviato dall'app prima di eseguire qualsiasi comando o l'agente.
+Toca **Avvia bootstrap Codespace**. L'app:
+1. cerca un codespace per questo repository (crea se manca, avvia se fermo);
+2. attende che sia davvero in esecuzione (poll, ~2 min);
+3. pubblica la porta 3000 del bridge come **public**;
+4. calcola l'URL `wss://<codename>-3000.app.github.dev`;
+5. salva l'URL e riavvia il servizio bridge, che si collega e autentica.
 
-### 3. Connetti dall'app
+### 3. Apri Chat
 
-1. In **Settings**, incolla l'URL del bridge (usa `wss://…`) e salva — l'avvio del servizio bridge è automatico.
-2. Assicurati che il PAT GitHub (scopes `repo`, `codespace`) sia salvato — l'app lo invia come token di auth del bridge.
-3. Apri **Chat**. Lo stato diventa verde ("Connesso e autenticato") quando il bridge valida il token; l'input si sblocca e puoi parlare con Cline.
+- Stato verde "Connesso e autenticato": puoi parlare con Cline.
+- L'URL del bridge è calcolato automaticamente; se per qualche motivo ti serve un URL manuale, puoi ottenerlo dal pannello PORTS dello codespace (Settings → impostazione manuale).
 
 ### Note e limitazioni
 
-- **Multi-turn**: ogni turno inietta il recente contesto della conversazione in una sessione Cline fresca (aggira un bug noto della Cline CLI dove il resume `--json --id` è rotto — cline/cline#10856). Costa qualche token in input.
+- Il bridge (`bridge/server.js`) deve girare sulla porta 3000 nello codespace (il devcontainer lo fa all'avvio: `postStartCommand`).
+- **Multi-turn**: ogni turno inietta il recente contesto della conversazione in una sessione Cline fresca (bug noto della Cline CLI dove il resume `--json --id` è rotto — cline/cline#10856). Costa qualche token in input.
 - **Stop**: il pulsante stop termina il processo Cline in esecuzione.
 - Android blocca `ws://` in cleartext — per test su LAN serve una network security config; `wss://` (Codespaces) funziona out of the box.
 

@@ -105,6 +105,14 @@ interface GitHubApiService {
         @Path("owner") owner: String,
         @Path("repo") repo: String
     ): List<GitRef>
+    @PUT("user/codespaces/{codespace_name}/ports/{port_number}")
+    suspend fun updateCodespacePort(
+        @Header("Authorization") token: String,
+        @Path("codespace_name") codespaceName: String,
+        @Path("port_number") portNumber: Int,
+        @Body body: CodespacePortUpdate
+    ): CodespacePort
+
 }
 
 /**
@@ -130,3 +138,16 @@ data class CodespaceListResponse(
     @SerializedName("total_count") val totalCount: Int = 0,
     @SerializedName("codespaces") val codespaces: List<Codespace> = emptyList()
 )
+
+    /** Body per la pubblicazione (visibility) di una porta: visibility = private|org|public. */
+    data class CodespacePortUpdate(
+        val visibility: String
+    )
+
+    /** Risposta di una porta (pubblicata) restituita dalla REST API. */
+    data class CodespacePort(
+        val id: String,
+        @com.google.gson.annotations.SerializedName("port") val port: Int,
+        @com.google.gson.annotations.SerializedName("visibility") val visibility: String
+    )
+

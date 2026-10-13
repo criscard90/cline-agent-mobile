@@ -14,22 +14,16 @@ import com.clineagentmobile.bridge.BridgeService
 import com.clineagentmobile.model.OAuthToken
 import com.clineagentmobile.network.GitHubApiService
 import com.clineagentmobile.network.RetrofitClient
+import com.clineagentmobile.settings.CodespaceBootstrapManager
 import com.clineagentmobile.storage.EncryptedPrefsManager
 import kotlinx.coroutines.launch
 
-/**
- * Settings screen: GitHub Personal Access Token + bridge WebSocket URL.
- *
- * The PAT is verified against the GitHub API before being saved and is used for
- * two things:
- *  - direct Codespace management from the Dashboard (no bridge required)
- *  - authentication towards the bridge server (sent with the 'auth' message)
- */
 class SettingsActivity : AppCompatActivity() {
 
     private lateinit var tokenInput: EditText
     private lateinit var tokenStatus: TextView
-    private lateinit var bridgeInput: EditText
+    private lateinit var bootstrapStatus: TextView
+    private lateinit var bridgeAutoUrl: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -37,7 +31,8 @@ class SettingsActivity : AppCompatActivity() {
 
         tokenInput = findViewById(R.id.settings_token_input)
         tokenStatus = findViewById(R.id.settings_token_status)
-        bridgeInput = findViewById(R.id.settings_bridge_input)
+        bootstrapStatus = findViewById(R.id.settings_bootstrap_status)
+        bridgeAutoUrl = findViewById(R.id.settings_bridge_auto_url)
 
         val prefs = try {
             EncryptedPrefsManager.getInstance(applicationContext)
@@ -52,11 +47,19 @@ class SettingsActivity : AppCompatActivity() {
             tokenInput.setText(existingToken)
             tokenStatus.text = getString(R.string.home_github_ok)
         }
-        bridgeInput.setText(prefs.getBridgeUrl() ?: "")
+        bridgeAutoUrl.text = prefs.getBridgeUrl()?.takeIf { it.isNotBlank() }
+                ?.let { getString(R.string.settings_bridge_auto_url, it) }
+                ?: getString(R.string.settings_bridge_auto_url_hint)
 
-        findViewById<Button>(R.id.settings_token_save).setOnClickListener { verifyAndSaveToken(prefs) }
-        findViewById<Button>(R.id.settings_token_create).setOnClickListener { openTokenCreator() }
-        findViewById<Button>(R.id.settings_bridge_save).setOnClickListener { saveBridgeUrl(prefs) }
+        findViewById<Button>(R.id.settings_token_save).setOnClickListener {
+            verifyAndSaveToken(prefs)
+        }
+        findViewById<Button>(R.id.settings_token_create).setOnClickListener {
+            openTokenCreator()
+        }
+        findViewById<Button>(R.id.settings_bootstrap_start).setOnClickListener {
+            lifecycleScope.launch { bootstrapFlow(prefs) }
+        }
     }
 
     private fun openTokenCreator() {
@@ -83,9 +86,7 @@ class SettingsActivity : AppCompatActivity() {
             runCatching {
                 RetrofitClient.create(GitHubApiService::class.java).getUser("Bearer $token")
             }.onSuccess { user ->
-                prefs.saveOAuthToken(
-                    OAuthToken(accessToken = token, tokenType = "Bearer", scope = "")
-                )
+                prefs.saveOAuthToken(OAuthToken(accessToken = token, tokenType = "Bearer", scope = ""))
                 tokenStatus.text = getString(R.string.settings_token_saved, user.login)
             }.onFailure { e ->
                 tokenStatus.text =
@@ -95,15 +96,40 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    private fun saveBridgeUrl(prefs: EncryptedPrefsManager) {
-        val url = bridgeInput.text.toString().trim()
-        prefs.saveBridgeUrl(url)
-        if (url.isNotBlank()) {
-            // Restart the service so an already-running client picks up the new URL
-            val serviceIntent = Intent(this, BridgeService::class.java)
-            stopService(serviceIntent)
-            startService(serviceIntent)
+    suspend fun bootstrapFlow(prefs: EncryptedPrefsManager) {
+        val authToken = prefs.getOAuthToken()?.accessToken ?: tokenInput.text.toString().trim()
+        if (authToken.isEmpty()) {
+            tokenStatus.text = getString(R.string.settings_token_missing)
+            return
         }
-        Toast.makeText(this, R.string.settings_bridge_saved, Toast.LENGTH_SHORT).show()
+
+        bootstrapStatus.text = getString(R.string.settings_bootstrap_status_initial)
+        try {
+            val bridgeUrl = CodespaceBootstrapManager.bootstrap(
+                authToken,
+                onStep = { step -> bootstrapStatus.text = step },
+                onComplete = { msg ->
+                    bootstrapStatus.text = msg
+                    bridgeAutoUrl.text = getString(R.string.settings_bridge_auto_url, msg)
+                }
+            )
+            prefs.saveBridgeUrl(bridgeUrl)
+            prefs.saveOAuthToken(OAuthToken(accessToken = authToken, tokenType = "Bearer", scope = ""))
+            restartBridgeService()
+            tokenStatus.text = getString(R.string.settings_token_saved, authToken.take(4) + "…")
+        } catch (e: Exception) {
+            tokenStatus.text = getString(R.string.settings_bridge_error, e.localizedMessage ?: "errore")
+            android.util.Log.e("SettingsActivity", "Bootstrap fallito", e)
+        }
+    }
+
+    private fun restartBridgeService() {
+        try {
+            val intent = Intent(this, BridgeService::class.java)
+            stopService(intent)
+            startService(intent)
+        } catch (e: Exception) {
+            android.util.Log.w("SettingsActivity", "Impossibile riavviare il bridge service", e)
+        }
     }
 }

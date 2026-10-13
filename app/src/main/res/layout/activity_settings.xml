@@ -92,7 +92,7 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- Bridge WebSocket -->
+                <!-- Codespace bootstrap automatico (a solo PAT) -->
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -108,35 +108,37 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="@string/settings_bridge_section"
+                    android:text="@string/settings_bootstrap_section"
                     android:textSize="14sp"
                     android:textStyle="bold"
                     android:textColor="@color/on_background" />
 
-                <EditText
-                    android:id="@+id/settings_bridge_input"
+                <Button
+                    android:id="@+id/settings_bootstrap_start"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:hint="@string/settings_bridge_hint"
-                    android:importantForAutofill="no"
-                    android:inputType="textUri" />
+                    android:text="@string/settings_bootstrap_start" />
 
                 <TextView
+                    android:id="@+id/settings_bootstrap_status"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:text="@string/settings_bridge_note"
-                    android:textColor="@color/icon"
-                    android:textSize="12sp" />
+                    android:text="@string/settings_bootstrap_status_initial"
+                    android:textSize="13sp"
+                    android:textColor="@color/icon" />
 
-                <Button
-                    android:id="@+id/settings_bridge_save"
+                <TextView
+                    android:id="@+id/settings_bridge_auto_url"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="@string/settings_bridge_save" />
+                    android:layout_marginTop="4dp"
+                    android:text="@string/settings_bridge_auto_url"
+                    android:textSize="12sp"
+                    android:textColor="@color/icon" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
+
     </LinearLayout>
 </ScrollView>
