@@ -1,21 +1,13 @@
 {
-	"name": "Cline Agent Mobile - Bridge",
-	"image": "mcr.microsoft.com/devcontainers/javascript-node:1-18-bullseye",
-	"features": {
-		"ghcr.io/devcontainers/features/github-cli:1": {},
-		"ghcr.io/devcontainers/features/docker-in-docker:2": {}
-	},
-	"forwardPorts": [3000, 11434],
-	"portsAttributes": {
-		"3000": {
-			"label": "Cline Bridge",
-			"onAutoForward": "notify"
-		},
-		"11434": {
-			"label": "Ollama",
-			"onAutoForward": "silent"
-		}
-	},
-	"postCreateCommand": "npm install -g cline && cd bridge && npm install",
-	"postStartCommand": "cd bridge && nohup node server.js > /tmp/cline-bridge.log 2>&1 &"
+  "name": "Cline Agent Mobile - Bridge",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-18-bullseye",
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": {
+      "label": "Cline Bridge",
+      "onAutoForward": "notify"
+    }
+  },
+  "postCreateCommand": "cd bridge && npm install",
+  "postStartCommand": "cd bridge && (npm install --no-audit --no-fund || true) && nohup node server.js > /tmp/cline-bridge.log 2>&1 &"
 }
