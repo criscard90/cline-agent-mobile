@@ -144,6 +144,7 @@ class SettingsActivity : AppCompatActivity() {
         updateRepoStatus(repoFull)
 
         bootstrapStatus.text = getString(R.string.settings_bootstrap_status_initial)
+        android.util.Log.i("SettingsActivity", "Bootstrap start su $repoFull")
         val tokenForBootstrap = try {
             preflightCodespaceScope(authToken)
         } catch (scopeError: Exception) {
@@ -155,9 +156,11 @@ class SettingsActivity : AppCompatActivity() {
             }
             tokenStatus.text = label
             bootstrapStatus.text = label
+            android.util.Log.e("SettingsActivity", "Bootstrap preflight fallito", scopeError)
             return
         }
         try {
+            // Nota: CodespaceBootstrapManager invoca onStep/onComplete gia' sul main thread.
             val bridgeUrl = CodespaceBootstrapManager.bootstrap(
                 tokenForBootstrap,
                 repoFull,

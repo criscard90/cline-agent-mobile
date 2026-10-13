@@ -1,6 +1,8 @@
 package com.clineagentmobile.settings
 
 import android.util.Base64
+import android.util.Log
+import com.clineagentmobile.network.ContentFileResponse
 import com.clineagentmobile.network.ContentPutRequest
 import com.clineagentmobile.network.GitHubApiService
 import retrofit2.HttpException
@@ -49,13 +51,23 @@ object BridgeProvisioner {
         path: String,
         desired: String
     ) {
-        val existing = try {
-            api.getContent(auth, owner, repo, path, branch)
+        // Se e' una directory, la Contents API restituisce un ARRAY (non un file):
+        // getContentFile lancia JsonSyntaxException ("Expected BEGIN_OBJECT but was BEGIN_ARRAY"):
+        // la trattiamo come "assente" (poi la PUT crea il file).
+        // 404 = file mancante -> PUT senza sha.
+        val existing: ContentFileResponse? = try {
+            Log.d("BridgeProvisioner", "GET $path (branch=$branch)")
+            api.getContentFile(auth, owner, repo, path, branch)
         } catch (e: HttpException) {
-            if (e.code() == 404) null
-            else throw IllegalStateException(
+            if (e.code() == 404) {
+                Log.d("BridgeProvisioner", "$path assente (404), verra' creato")
+                null
+            } else throw IllegalStateException(
                 "Lettura $path fallita (codice ${e.code()}): ${e.message}", e
             )
+        } catch (e: com.google.gson.JsonSyntaxException) {
+            Log.d("BridgeProvisioner", "$path e' una directory, verra' creato il file dentro")
+            null
         }
         val existingText = existing?.content
             ?.takeIf { existing.encoding.equals("base64", ignoreCase = true) }
@@ -70,6 +82,7 @@ object BridgeProvisioner {
         )
         try {
             api.putContent(auth, owner, repo, path, body)
+            Log.i("BridgeProvisioner", "PUT $path OK")
         } catch (e: HttpException) {
             throw IllegalStateException(
                 "Scrittura $path fallita (codice ${e.code()}): serve scope repo con permessi di scrittura",

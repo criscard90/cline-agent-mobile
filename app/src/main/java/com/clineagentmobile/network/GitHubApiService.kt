@@ -116,13 +116,13 @@ interface GitHubApiService {
     // --- Contents API per il self-provisioning del bridge (solo PAT) ---
 
     @GET("repos/{owner}/{repo}/contents/{path}")
-    suspend fun getContent(
+    suspend fun getContentFile(
         @Header("Authorization") token: String,
         @Path("owner") owner: String,
         @Path("repo") repo: String,
         @Path(value = "path", encoded = true) path: String,
         @Query("ref") ref: String? = null
-    ): ContentResponse
+    ): ContentFileResponse
 
     @PUT("repos/{owner}/{repo}/contents/{path}")
     suspend fun putContent(
@@ -178,8 +178,8 @@ data class CodespaceListResponse(
         @com.google.gson.annotations.SerializedName("visibility") val visibility: String
     )
 
-    /** Voce restituita da GET /repos/{o}/{r}/contents/{path} per un file. */
-    data class ContentResponse(
+    /** Voce restituita da GET /repos/{o}/{r}/contents/{path} quando path e' un file. */
+    data class ContentFileResponse(
         @SerializedName("sha") val sha: String,
         @SerializedName("path") val path: String? = null,
         @SerializedName("content") val content: String? = null,
@@ -196,6 +196,6 @@ data class CodespaceListResponse(
 
     /** Risposta di PUT contents (a noi serve solo per conferma). */
     data class ContentPutResponse(
-        @SerializedName("content") val content: ContentResponse? = null
+        @SerializedName("content") val content: ContentFileResponse? = null
     )
 
