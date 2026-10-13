@@ -156,4 +156,16 @@
     <string name="settings_bridge_error">Bootstrap fallito: %s</string>
     <string name="settings_bridge_auto_url">URL bridge: %s</string>
 
+    <!-- Settings - selettore repository per il bootstrap -->
+    <string name="settings_repo_section">Repository per il Codespace</string>
+    <string name="settings_repo_hint">owner/repo (es. octocat/hello-world)</string>
+    <string name="settings_repo_status">Repo: %1$s</string>
+    <string name="settings_repo_load">Carica i miei repo</string>
+    <string name="settings_repo_loading">Caricamento repo…</string>
+    <string name="settings_repo_empty">Nessun repository trovato per questo token</string>
+    <string name="settings_repo_pick_title">Scegli il repository</string>
+    <string name="settings_repo_no_token">Prima salva e verifica il token GitHub</string>
+    <string name="settings_repo_invalid">Repository non valido: usa owner/nome-repo (es. octocat/hello-world)</string>
+    <string name="settings_token_scope_missing">Token valido ma senza scope \"codespace\": rigeneralo con repo + codespace</string>
+
 </resources>

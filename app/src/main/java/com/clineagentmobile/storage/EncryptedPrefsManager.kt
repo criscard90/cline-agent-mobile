@@ -28,6 +28,7 @@ class EncryptedPrefsManager private constructor(appContext: Context) {
         private const val KEY_OAUTH_TOKEN = "oauth_token"
         private const val KEY_OAUTH_REFRESH = "oauth_refresh_token"
         private const val KEY_BRIDGE_URL = "bridge_url"
+    private const val KEY_REPOSITORY = "repository"
         private const val KEY_TIMEOUT = "timeout_seconds"
         private const val KEY_IS_FIRST_LAUNCH = "is_first_launch"
         private const val KEY_MODEL_PREF = "preferred_model"
@@ -79,6 +80,17 @@ class EncryptedPrefsManager private constructor(appContext: Context) {
 
     fun getBridgeUrl(): String? {
         return sharedPreferences.getString(KEY_BRIDGE_URL, null)
+    }
+
+    fun saveRepository(repo: String) {
+        with(sharedPreferences.edit()) {
+            putString(KEY_REPOSITORY, repo)
+            apply()
+        }
+    }
+
+    fun getRepository(): String? {
+        return sharedPreferences.getString(KEY_REPOSITORY, null)
     }
 
     fun saveTimeout(seconds: Int) {
@@ -186,6 +198,7 @@ class EncryptedPrefsManager private constructor(appContext: Context) {
             remove(KEY_OAUTH_TOKEN)
             remove(KEY_OAUTH_REFRESH)
             remove(KEY_BRIDGE_URL)
+            remove(KEY_REPOSITORY)
             remove(KEY_TIMEOUT)
             remove(KEY_IS_FIRST_LAUNCH)
             remove(KEY_MODEL_PREF)
