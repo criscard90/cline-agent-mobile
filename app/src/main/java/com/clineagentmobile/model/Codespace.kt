@@ -35,7 +35,8 @@ data class Codespace(
     @SerializedName("display_name") val displayName: String? = null,
     @SerializedName("statusText") val statusText: String? = null,
     @SerializedName("ssh_ready") val sshReady: Boolean = false,
-    @SerializedName("container_ready") val containerReady: Boolean = false
+    @SerializedName("container_ready") val containerReady: Boolean = false,
+    @SerializedName("connection") val connection: CodespaceConnection? = null
 ) {
     @JsonAdapter(StateAdapter::class)
     enum class State {
@@ -128,6 +129,29 @@ data class Codespace(
         }
     }
 }
+
+/**
+ * Connessione del codespace al servizio Dev Tunnels di GitHub.
+ * Contiene le credenziali con cui rendere pubblica una porta forwarded.
+ */
+data class CodespaceConnection(
+    @SerializedName("tunnelProperties") val tunnelProperties: TunnelProperties? = null
+)
+
+/**
+ * Proprietà del tunnel: arrivano da GET /user/codespaces/{name} (campo
+ * `connection.tunnelProperties`) e servono al Dev Tunnel Manager
+ * (usato da `gh codespace ports visibility`) per aggiornare la visibilità
+ * delle porte — la REST API di GitHub non ha endpoint per le porte.
+ */
+data class TunnelProperties(
+    @SerializedName("serviceUri") val serviceUri: String? = null,
+    @SerializedName("tunnelId") val tunnelId: String? = null,
+    @SerializedName("clusterId") val clusterId: String? = null,
+    @SerializedName("domain") val domain: String? = null,
+    @SerializedName("connectAccessToken") val connectAccessToken: String? = null,
+    @SerializedName("managePortsAccessToken") val managePortsAccessToken: String? = null
+)
 
 /**
  * Lenient (de)serializer for [Codespace.State]: accepts any string GitHub

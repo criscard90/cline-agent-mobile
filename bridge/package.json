@@ -1,11 +1,12 @@
 {
   "name": "cline-agent-bridge",
   "version": "1.0.0",
-  "private": true,
-  "description": "Bridge server auto-provisioned by Cline Agent Mobile",
+  "description": "Backend bridge server for Cline Agent Mobile to communicate with GitHub Codespaces and Cline AI",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "node server.js",
+    "test": "node test.js"
   },
   "engines": {
     "node": ">=18.0.0"

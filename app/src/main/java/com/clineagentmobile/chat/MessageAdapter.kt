@@ -10,6 +10,8 @@ import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.clineagentmobile.R
 import com.clineagentmobile.model.Message
+import io.noties.markwon.Markwon
+import io.noties.markwon.ext.tables.TablePlugin
 
 /**
  * RecyclerView adapter rendering the chat conversation. User messages are
@@ -19,6 +21,7 @@ import com.clineagentmobile.model.Message
 class MessageAdapter : RecyclerView.Adapter<MessageAdapter.MessageViewHolder>() {
 
     private val items = mutableListOf<Message>()
+    private var markdownRenderer: Markwon? = null
 
     fun submit(newItems: List<Message>) {
         items.clear()
@@ -47,7 +50,15 @@ class MessageAdapter : RecyclerView.Adapter<MessageAdapter.MessageViewHolder>() 
             val context = itemView.context
             val isUser = message.role == Message.Role.USER
 
-            content.text = message.text
+            if (message.role == Message.Role.ASSISTANT) {
+                val renderer = markdownRenderer ?: Markwon.builder(context)
+                    .usePlugin(TablePlugin.create(context))
+                    .build()
+                    .also { markdownRenderer = it }
+                renderer.setMarkdown(content, message.text)
+            } else {
+                content.text = message.text
+            }
 
             val cardLp = card.layoutParams as FrameLayout.LayoutParams
             cardLp.gravity = if (isUser) Gravity.END else Gravity.START

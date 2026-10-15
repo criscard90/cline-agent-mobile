@@ -67,9 +67,20 @@ data class BridgeMessage(
             payload = mapOf("bridgeState" to bridgeState)
         )
 
-        fun chatMessage(message: com.clineagentmobile.model.Message) = BridgeMessage(
+        fun chatMessage(
+            message: com.clineagentmobile.model.Message,
+            model: String,
+            apiKey: String,
+            conversationId: String
+        ) = BridgeMessage(
             type = MessageType.CHAT_MESSAGE,
-            payload = mapOf("message" to message)
+            payload = mapOf(
+                "message" to message,
+                "provider" to "openrouter",
+                "model" to model,
+                "apiKey" to apiKey,
+                "conversationId" to conversationId
+            )
         )
 
         fun chatStream(text: String) = BridgeMessage(

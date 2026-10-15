@@ -43,7 +43,9 @@ interface GitHubApiService {
     @GET("user/codespaces/{codespace_name}")
     suspend fun getMyCodespace(
         @Header("Authorization") token: String,
-        @Path("codespace_name") name: String
+        @Path("codespace_name") name: String,
+        @Query("internal") internal: Boolean? = null,
+        @Query("refresh") refresh: Boolean? = null
     ): Codespace
 
     @POST("repos/{owner}/{repo}/codespaces")
@@ -105,14 +107,6 @@ interface GitHubApiService {
         @Path("owner") owner: String,
         @Path("repo") repo: String
     ): List<GitRef>
-    @PUT("user/codespaces/{codespace_name}/ports/{port_number}")
-    suspend fun updateCodespacePort(
-        @Header("Authorization") token: String,
-        @Path("codespace_name") codespaceName: String,
-        @Path("port_number") portNumber: Int,
-        @Body body: CodespacePortUpdate
-    ): CodespacePort
-
     // --- Contents API per il self-provisioning del bridge (solo PAT) ---
 
     @GET("repos/{owner}/{repo}/contents/{path}")
@@ -166,18 +160,6 @@ data class CodespaceListResponse(
     @SerializedName("codespaces") val codespaces: List<Codespace> = emptyList()
 )
 
-    /** Body per la pubblicazione (visibility) di una porta: visibility = private|org|public. */
-    data class CodespacePortUpdate(
-        val visibility: String
-    )
-
-    /** Risposta di una porta (pubblicata) restituita dalla REST API. */
-    data class CodespacePort(
-        val id: String,
-        @com.google.gson.annotations.SerializedName("port") val port: Int,
-        @com.google.gson.annotations.SerializedName("visibility") val visibility: String
-    )
-
     /** Voce restituita da GET /repos/{o}/{r}/contents/{path} quando path e' un file. */
     data class ContentFileResponse(
         @SerializedName("sha") val sha: String,
@@ -198,4 +180,3 @@ data class CodespaceListResponse(
     data class ContentPutResponse(
         @SerializedName("content") val content: ContentFileResponse? = null
     )
-

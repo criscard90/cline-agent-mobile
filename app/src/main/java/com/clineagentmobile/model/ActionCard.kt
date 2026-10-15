@@ -12,8 +12,8 @@ data class ActionCard(
     @SerializedName("description") val description: String = "",
     @SerializedName("command") val command: String? = null,
     @SerializedName("files") val files: List<DiffFile>? = null,
-    @SerializedName("confirmLabel") val confirmLabel: String = "Approva",
-    @SerializedName("denyLabel") val denyLabel: String = "Rifiuta",
+    @SerializedName("confirmLabel") val confirmLabel: String = "Approve",
+    @SerializedName("denyLabel") val denyLabel: String = "Deny",
     @SerializedName("requiresConfirmation") val requiresConfirmation: Boolean = true,
     @SerializedName("metadata") val metadata: Map<String, String> = emptyMap()
 ) {
@@ -32,26 +32,26 @@ data class ActionCard(
             ActionCard(
                 id = java.util.UUID.randomUUID().toString(),
                 type = ActionType.TERMINAL_COMMAND,
-                title = "Esegui comando",
+                title = "Run command",
                 description = description,
                 command = command,
                 requiresConfirmation = requiresConfirmation,
-                confirmLabel = "Esegui",
-                denyLabel = "Annulla"
+                confirmLabel = "Run",
+                denyLabel = "Cancel"
             )
 
         fun fileEdit(
             files: List<DiffFile>,
-            description: String = "Modifica file"
+            description: String = "Edit file"
         ) = ActionCard(
             id = java.util.UUID.randomUUID().toString(),
             type = ActionType.FILE_EDIT,
-            title = "Modifica file",
+            title = "Edit file",
             description = description,
             files = files,
             requiresConfirmation = true,
-            confirmLabel = "Applica",
-            denyLabel = "Ignora"
+            confirmLabel = "Apply",
+            denyLabel = "Ignore"
         )
     }
 }

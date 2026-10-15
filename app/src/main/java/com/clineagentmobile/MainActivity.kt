@@ -57,7 +57,9 @@ class MainActivity : AppCompatActivity() {
         if (!bridgeUrl.isNullOrBlank()) {
             // Auto-start the bridge service as soon as an URL is configured
             try {
-                startService(Intent(this, BridgeService::class.java))
+                androidx.core.content.ContextCompat.startForegroundService(
+                    this, Intent(this, BridgeService::class.java)
+                )
             } catch (e: Exception) {
                 android.util.Log.w("MainActivity", "Cannot start BridgeService", e)
             }

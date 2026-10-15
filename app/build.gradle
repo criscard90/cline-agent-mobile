@@ -11,8 +11,8 @@ android {
         applicationId "com.clineagentmobile"
         minSdk 24
         targetSdk 34
-        versionCode 9
-        versionName "1.0.9"
+        versionCode 22
+        versionName "1.0.22"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -48,6 +48,20 @@ android {
         abortOnError false
         checkReleaseBuilds false
     }
+
+    sourceSets {
+        main.assets.srcDir("$buildDir/generated/bridgeAssets")
+    }
+}
+
+def generatedBridgeAssets = file("$buildDir/generated/bridgeAssets")
+tasks.register('copyBridgeServerAsset', Copy) {
+    from '../bridge/server.js'
+    into generatedBridgeAssets
+    rename 'server.js', 'bridge-server.js'
+}
+tasks.named('preBuild').configure {
+    dependsOn tasks.named('copyBridgeServerAsset')
 }
 
 dependencies {
@@ -67,10 +81,11 @@ dependencies {
     implementation 'com.squareup.okhttp3:logging-interceptor:4.12.0'
     implementation 'com.google.code.gson:gson:2.10.1'
     implementation 'io.coil-kt:coil:2.5.0'
+    implementation 'io.noties.markwon:core:4.6.2'
+    implementation 'io.noties.markwon:ext-tables:4.6.2'
     implementation 'androidx.security:security-crypto:1.1.0-alpha06'
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
 }
-

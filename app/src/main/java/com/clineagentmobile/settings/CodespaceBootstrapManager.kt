@@ -1,42 +1,70 @@
 package com.clineagentmobile.settings
 
-import android.content.Context
 import com.clineagentmobile.network.CodespaceCreateRequest
-import com.clineagentmobile.network.CodespacePortUpdate
 import com.clineagentmobile.network.GitHubApiService
 import com.clineagentmobile.network.RetrofitClient
 import com.clineagentmobile.model.Codespace
+import java.time.OffsetDateTime
+import java.time.format.DateTimeParseException
 import retrofit2.HttpException
+
+private const val BRIDGE_CODESPACE_DISPLAY_NAME = "Cline Agent Mobile Bridge"
+
+internal fun selectExistingCodespace(
+    codespaces: List<Codespace>,
+    repoFull: String
+): Codespace? {
+    val candidates = codespaces.filter { it.repository.fullName == repoFull }
+    val managed = candidates.filter { it.displayName == BRIDGE_CODESPACE_DISPLAY_NAME }
+    return managed.maxByOrNull { codespace ->
+        try {
+            OffsetDateTime.parse(codespace.updatedAt).toInstant().toEpochMilli()
+        } catch (e: DateTimeParseException) {
+            Long.MIN_VALUE
+        }
+    } ?: candidates.firstOrNull {
+        it.isRunning
+    } ?: candidates.firstOrNull()
+}
 
 /**
  * Bootstrap automatico a solo PAT. Ogni passaggio è idempotente:
  *  0. self-provisioning: commit devcontainer+bridge nella repo scelta (via Contents API)
- *  1. cerca un codespace per il repo scelto (eseguendolo)
- *  2. lo crea se manca
+ *  1. cerca un codespace per il repo scelto
+ *  2. ne crea uno se manca o se la configurazione del devcontainer è cambiata
  *  3. lo avvia se è fermo
  *  4. aspetta che sia davvero in esecuzione (poll)
- *  5. pubblica la porta 3000 (bridge) sulla rete pubblica
- *  6. restituisce l'URL wss da salvare in Prefs e dal quale il bridge si collega
+ *  5. il lifecycle del devcontainer pubblica la porta con GitHub CLI
+ *  6. verifica il bridge prima di restituire l'URL wss
+ *  7. dopo una sostituzione riuscita, ferma il codespace precedente senza eliminarlo
  *
  * @param repoFull repository GitHub in formato owner/repo (es. octocat/hello-world);
  *                 il codespace viene cercato/creato su questo repo.
  */
 object CodespaceBootstrapManager {
     private val MAIN = android.os.Handler(android.os.Looper.getMainLooper())
+    @Volatile private var latestStep: String? = null
+    @Volatile private var latestTunnelUrl: String? = null
     // Se il repo GitHub reale è diverso, modificalo qui o selezionalo nelle Impostazioni.
     private const val BRIDGE_PORT = 3000
     private const val POLL_INTERVAL_MS = 2_000L
     private const val POLL_TIMEOUT_MS = 300_000L
 
+    fun lastStep(): String? = latestStep
+
+    fun lastTunnelUrl(): String? = latestTunnelUrl
+
     suspend fun bootstrap(
         token: String,
         repoFull: String,
+        bridgeServerScript: String,
         onStep: (String) -> Unit = {},
         onComplete: (String) -> Unit = {}
     ): String {
         // Retrofit sposta le suspend su thread IO: gli onStep arrivano da worker thread.
         // Normalizziamo qui dentro cosi' nessun chiamante puo' dimenticare il main thread.
         val mainStep: (String) -> Unit = { msg ->
+            latestStep = msg
             android.util.Log.i("CodespaceBootstrap", "STEP: $msg")
             try {
                 MAIN.post { onStep(msg) }
@@ -45,6 +73,7 @@ object CodespaceBootstrapManager {
             }
         }
         val mainComplete: (String) -> Unit = { msg ->
+            latestStep = msg
             android.util.Log.i("CodespaceBootstrap", "COMPLETE: $msg")
             try {
                 MAIN.post { onComplete(msg) }
@@ -60,40 +89,59 @@ object CodespaceBootstrapManager {
         val (owner, repoName) = repo.split('/', limit = 2)
 
         mainStep("Provisioning bridge in $repo (auto-commit devcontainer)")
-        BridgeProvisioner.ensureBridgeFiles(api, auth, owner, repoName, mainStep)
+        val bridgeStartupChanged =
+            BridgeProvisioner.ensureBridgeFiles(
+                api, auth, owner, repoName, bridgeServerScript, mainStep
+            )
 
-        mainStep("Ricerca codespace in $repo")
-        val cs = findExisting(api, auth, repo)
-            ?: createCodespace(api, auth, repo)
-                .also { mainStep("Codespace creato: " + it.name) }
-
-        if (cs.isStopped) {
-            mainStep("Avvio codespace " + cs.name)
-            api.startCodespace(auth, cs.name)
-            mainStep("Codespace avviato: " + cs.name)
+        mainStep("Searching for a Codespace in $repo")
+        val existingCodespace = findExisting(api, auth, repo)
+        val replacingExisting = existingCodespace != null && bridgeStartupChanged
+        val cs = when {
+            replacingExisting -> {
+                mainStep("Configuration updated: creating a replacement Codespace.")
+                createCodespace(api, auth, repo)
+                    .also { mainStep("Replacement Codespace created: " + it.name) }
+            }
+            existingCodespace != null -> existingCodespace
+            else -> createCodespace(api, auth, repo)
+                .also { mainStep("Codespace created: " + it.name) }
         }
 
-        mainStep("Attesa codespace in esecuzione (max 300s)...")
-        val running = pollUntilRunning(api, auth, cs.name, mainStep)
-        mainStep("Codespace pronto: " + running.name)
+        if (cs.isStopped) {
+            mainStep("Starting Codespace " + cs.name)
+            api.startCodespace(auth, cs.name)
+            mainStep("Codespace started: " + cs.name)
+        }
 
-        mainStep("Verifica bridge server sulla porta $BRIDGE_PORT...")
-        val bridgeReady = waitForBridgeServer(api, auth, cs.name, mainStep)
-        if (!bridgeReady) {
-            mainStep(
-                "Bridge server non risponde sulla porta $BRIDGE_PORT: " +
-                    "apri il codespace, avvia 'node bridge/server.js' e riprova."
+        mainStep("Waiting for Codespace to start (max 300s)…")
+        val running = pollUntilRunning(api, auth, cs.name, mainStep)
+        mainStep("Codespace ready: " + running.name)
+
+        mainStep("Waiting for bridge and automatic publication of port $BRIDGE_PORT…")
+        if (!waitForBridgeServer(api, auth, cs.name, mainStep)) {
+            throw IllegalStateException(
+                "The bridge did not become publicly accessible on port $BRIDGE_PORT. " +
+                    "Check /tmp/cline-bridge.log and /tmp/cline-port-visibility.log in the Codespace."
             )
         }
 
-        val portPublished = publishBridgePort(api, auth, cs.name)
-        val wssUrl = "wss://" + cs.name + "-" + BRIDGE_PORT + ".app.github.dev"
-        if (!portPublished) {
-            mainStep("Attenzione: porta $BRIDGE_PORT non pubblicata. Aprite Impostazioni codespace e esponete 3000 in modalità public.")
-            mainComplete("Bridge URL: $wssUrl (porta 3000 non pubblicata: esporla nelle Impostazioni del codespace)")
-        } else {
-            mainComplete("Bridge URL: $wssUrl")
+        if (replacingExisting && existingCodespace?.isRunning == true) {
+            mainStep("Bridge ready; stopping previous Codespace " + existingCodespace.name)
+            try {
+                api.stopCodespace(auth, existingCodespace.name)
+            } catch (e: HttpException) {
+                throw IllegalStateException(
+                    "Bridge is active in new Codespace ${cs.name}, but could not stop " +
+                        "previous Codespace ${existingCodespace.name} (HTTP ${e.code()}).",
+                    e
+                )
+            }
         }
+
+        val wssUrl = "wss://" + running.name + "-" + BRIDGE_PORT + ".app.github.dev"
+        latestTunnelUrl = wssUrl
+        mainComplete("Bridge URL: $wssUrl")
         return wssUrl
     }
 
@@ -103,27 +151,31 @@ object CodespaceBootstrapManager {
         repoFull: String
     ): Codespace? {
         val csList = api.listMyCodespaces(auth)
-        val candidate = csList.codespaces.firstOrNull {
-            it.repository.fullName == repoFull && it.state == Codespace.State.RUNNING
-        } ?: csList.codespaces.firstOrNull {
-            it.repository.fullName == repoFull
-        }
-        return candidate
+        return selectExistingCodespace(csList.codespaces, repoFull)
     }
 
     private fun validateRepoFull(repoFull: String) {
         val parts = repoFull.split('/', limit = 2)
         if (parts.size != 2 || parts[0].isBlank() || parts[1].isBlank()) {
-            throw IllegalArgumentException("Repository non valido: $repoFull (usa owner/nome-repo, es. octocat/hello-world)")
+            throw IllegalArgumentException("Invalid repository: $repoFull (use owner/repository, e.g. octocat/hello-world)")
         }
     }
 
-    private suspend fun createCodespace(api: GitHubApiService, auth: String, repoFull: String): Codespace {
+    private suspend fun createCodespace(
+        api: GitHubApiService,
+        auth: String,
+        repoFull: String
+    ): Codespace {
         val (owner, repo) = repoFull.split('/', limit = 2)
         return try {
-            api.createCodespaceInRepo(auth, owner, repo, CodespaceCreateRequest())
+            api.createCodespaceInRepo(
+                auth,
+                owner,
+                repo,
+                CodespaceCreateRequest(displayName = BRIDGE_CODESPACE_DISPLAY_NAME)
+            )
         } catch (e: HttpException) {
-            throw IllegalStateException("Impossibile creare i codespace su $repoFull (codice ${e.code()}): ${e.message}", e)
+            throw IllegalStateException("Unable to create a Codespace for $repoFull (HTTP ${e.code()}): ${e.message}", e)
         }
     }
 
@@ -140,14 +192,14 @@ object CodespaceBootstrapManager {
             val state = cs.state.name
             if (state != lastState) {
                 lastState = state
-                onStep("Stato codespace: $state")
+                onStep("Codespace state: $state")
             }
             if (cs.isRunning) {
                 return cs
             }
             kotlinx.coroutines.delay(POLL_INTERVAL_MS)
         }
-        throw IllegalStateException("Timeout: codespace $name non è riuscito a partire entro ${POLL_TIMEOUT_MS / 1000}s.")
+        throw IllegalStateException("Timeout: Codespace $name did not start within ${POLL_TIMEOUT_MS / 1000}s.")
     }
 
     private suspend fun waitForBridgeServer(
@@ -161,39 +213,39 @@ object CodespaceBootstrapManager {
                 .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
                 .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
                 .build()
-            repeat(6) { attempt ->
+            repeat(BRIDGE_CHECK_ATTEMPTS) { attempt ->
                 try {
                     val cs = api.getMyCodespace(auth, name)
                     val httpUrl = "https://" + cs.name + "-" + BRIDGE_PORT + ".app.github.dev"
                     val req = okhttp3.Request.Builder().url(httpUrl).get().build()
                     client.newCall(req).execute().use { resp ->
-                        onStep("Bridge check ${attempt + 1}/6: HTTP ${resp.code}")
-                        if (resp.isSuccessful) return@withContext true
+                        val body = resp.peekBody(256).string().trim()
+                        if (resp.isSuccessful && body == "Cline Agent Mobile Bridge Server") {
+                            onStep("Bridge verificato (HTTP ${resp.code})")
+                            return@withContext true
+                        }
+                        onStep(
+                            "Bridge/port check ${attempt + 1}/$BRIDGE_CHECK_ATTEMPTS: " +
+                                "not accessible yet (HTTP ${resp.code})"
+                        )
                     }
                 } catch (e: Exception) {
-                    onStep("Bridge non ancora raggiungibile (tentativo ${attempt + 1}/6)")
+                    onStep(
+                        "Bridge not reachable yet " +
+                            "(attempt ${attempt + 1}/$BRIDGE_CHECK_ATTEMPTS)"
+                    )
                     android.util.Log.d(
                         "CodespaceBootstrap",
-                        "Bridge non ancora raggiungibile (tentativo ${attempt + 1}/6): ${e.message}"
+                        "Bridge non ancora raggiungibile " +
+                            "(tentativo ${attempt + 1}/$BRIDGE_CHECK_ATTEMPTS): ${e.message}"
                     )
                 }
-                kotlinx.coroutines.delay(5_000L)
+                kotlinx.coroutines.delay(BRIDGE_CHECK_INTERVAL_MS)
             }
             false
         }
     }
 
-    private suspend fun publishBridgePort(api: GitHubApiService, auth: String, name: String): Boolean {
-        return try {
-            api.updateCodespacePort(auth, name, BRIDGE_PORT, CodespacePortUpdate("public"))
-            true
-        } catch (e: HttpException) {
-            android.util.Log.w(
-                "CodespaceBootstrap",
-                "Pubblicazione porta $BRIDGE_PORT non riuscita (codice ${e.code()}); risultato: pubblicare manualmente la porta 3000 nelle Impostazioni del codespace.",
-                e
-            )
-            false
-        }
-    }
+    private const val BRIDGE_CHECK_ATTEMPTS = 24
+    private const val BRIDGE_CHECK_INTERVAL_MS = 5_000L
 }

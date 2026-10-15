@@ -12,16 +12,20 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.clineagentmobile.R
+import com.clineagentmobile.ai.OpenRouterCatalog
 import com.clineagentmobile.bridge.BridgeService
 import com.clineagentmobile.model.OAuthToken
 import com.clineagentmobile.model.Repository
 import com.clineagentmobile.network.GitHubApiService
 import com.clineagentmobile.network.RetrofitClient
 import com.clineagentmobile.storage.EncryptedPrefsManager
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 
 class SettingsActivity : AppCompatActivity() {
+
+    private var bootstrapJob: Job? = null
 
     private lateinit var tokenInput: EditText
     private lateinit var tokenStatus: TextView
@@ -30,6 +34,9 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var repoInput: EditText
     private lateinit var repoStatus: TextView
     private lateinit var repoLoadButton: Button
+    private lateinit var openRouterKeyInput: EditText
+    private lateinit var openRouterStatus: TextView
+    private lateinit var openRouterSaveButton: Button
 
     private val defaultRepo = "criscard90/cline-agent-mobile"
 
@@ -44,6 +51,9 @@ class SettingsActivity : AppCompatActivity() {
         repoInput = findViewById(R.id.settings_repo_input)
         repoStatus = findViewById(R.id.settings_repo_status)
         repoLoadButton = findViewById(R.id.settings_repo_load)
+        openRouterKeyInput = findViewById(R.id.settings_openrouter_key)
+        openRouterStatus = findViewById(R.id.settings_openrouter_status)
+        openRouterSaveButton = findViewById(R.id.settings_openrouter_save)
 
         val prefs = try {
             EncryptedPrefsManager.getInstance(applicationContext)
@@ -58,9 +68,20 @@ class SettingsActivity : AppCompatActivity() {
             tokenInput.setText(existingToken)
             tokenStatus.text = getString(R.string.home_github_ok)
         }
+        openRouterStatus.setText(
+            if (prefs.getOpenRouterKey().isNullOrBlank()) {
+                R.string.settings_openrouter_key_missing
+            } else {
+                R.string.settings_openrouter_key_configured
+            }
+        )
         bridgeAutoUrl.text = prefs.getBridgeUrl()?.takeIf { it.isNotBlank() }
                 ?.let { getString(R.string.settings_bridge_auto_url, it) }
                 ?: getString(R.string.settings_bridge_auto_url_hint)
+        // Ripristina l'ultimo step reale del bootstrap (se l'activity e' stata
+        // riaperta, il default del layout "Token verificato, avvio provisioning…"
+        // non deve restare li' a ingannare).
+        CodespaceBootstrapManager.lastStep()?.let { bootstrapStatus.text = it }
 
         findViewById<Button>(R.id.settings_token_save).setOnClickListener {
             verifyAndSaveToken(prefs)
@@ -68,13 +89,40 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<Button>(R.id.settings_token_create).setOnClickListener {
             openTokenCreator()
         }
+        openRouterSaveButton.setOnClickListener { verifyAndSaveOpenRouterKey(prefs) }
+        findViewById<Button>(R.id.settings_openrouter_create).setOnClickListener {
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://openrouter.ai/keys")))
+            } catch (e: Exception) {
+                Toast.makeText(this, R.string.error_generic, Toast.LENGTH_SHORT).show()
+            }
+        }
         repoInput.setText(prefs.getRepository()?.takeIf { it.isNotBlank() } ?: defaultRepo)
         updateRepoStatus(prefs.getRepository()?.takeIf { it.isNotBlank() } ?: defaultRepo)
         repoLoadButton.setOnClickListener {
             loadRepoPicker(prefs)
         }
         findViewById<Button>(R.id.settings_bootstrap_start).setOnClickListener {
-            lifecycleScope.launch { bootstrapFlow(prefs) }
+            val btn = it as Button
+            if (bootstrapJob?.isActive == true) {
+                bootstrapJob?.cancel()
+                bootstrapStatus.text = getString(R.string.settings_bootstrap_cancelled)
+                btn.text = getString(R.string.settings_bootstrap_start)
+                btn.isEnabled = true
+                return@setOnClickListener
+            }
+            btn.isEnabled = false
+            btn.text = getString(R.string.settings_bootstrap_cancel)
+            bootstrapJob = lifecycleScope.launch {
+                try {
+                    bootstrapFlow(prefs)
+                } finally {
+                    runOnUiThread {
+                        btn.isEnabled = true
+                        btn.text = getString(R.string.settings_bootstrap_start)
+                    }
+                }
+            }
         }
     }
 
@@ -95,6 +143,7 @@ class SettingsActivity : AppCompatActivity() {
             tokenStatus.text = getString(R.string.settings_token_missing)
             return
         }
+
         val button = findViewById<Button>(R.id.settings_token_save)
         button.isEnabled = false
         tokenStatus.text = getString(R.string.settings_token_validating)
@@ -116,13 +165,42 @@ class SettingsActivity : AppCompatActivity() {
                 prefs.saveOAuthToken(OAuthToken(accessToken = token, tokenType = "Bearer", scope = ""))
                 tokenStatus.text = getString(R.string.settings_token_saved, user.login)
             }.onFailure { e ->
-                tokenStatus.text = if (e.message == "SCOPE_CODESPACES_MANCANTE") {
+                // 'SCOPE_CODESPACES_MANCANTE' viaggia in IllegalStateException.message.
+                // Per gli altri errori mostriamo il messaggio leggibile.
+                val missingScope = e.message == "SCOPE_CODESPACES_MANCANTE" ||
+                    (e is IllegalStateException && e.cause?.message == "SCOPE_CODESPACES_MANCANTE")
+                tokenStatus.text = if (missingScope) {
                     getString(R.string.settings_token_scope_missing)
                 } else {
                     getString(R.string.settings_token_invalid, e.localizedMessage ?: "error")
                 }
             }
             button.isEnabled = true
+        }
+    }
+
+    private fun verifyAndSaveOpenRouterKey(prefs: EncryptedPrefsManager) {
+        val key = openRouterKeyInput.text.toString().trim()
+        if (key.isEmpty()) {
+            openRouterStatus.setText(R.string.settings_openrouter_key_missing)
+            return
+        }
+        openRouterSaveButton.isEnabled = false
+        openRouterStatus.setText(R.string.settings_openrouter_key_validating)
+        lifecycleScope.launch {
+            try {
+                OpenRouterCatalog.verifyApiKey(key)
+                prefs.saveOpenRouterKey(key)
+                openRouterKeyInput.text.clear()
+                openRouterStatus.setText(R.string.settings_openrouter_key_configured)
+            } catch (e: Exception) {
+                openRouterStatus.text = getString(
+                    R.string.settings_openrouter_key_error,
+                    e.localizedMessage ?: e.javaClass.simpleName
+                )
+            } finally {
+                openRouterSaveButton.isEnabled = true
+            }
         }
     }
 
@@ -148,7 +226,7 @@ class SettingsActivity : AppCompatActivity() {
         val tokenForBootstrap = try {
             preflightCodespaceScope(authToken)
         } catch (scopeError: Exception) {
-            val msg = scopeError.localizedMessage ?: "errore"
+            val msg = scopeError.localizedMessage ?: "Unknown error"
             val label = if (msg == "SCOPE_CODESPACES_MANCANTE") {
                 getString(R.string.settings_token_scope_missing)
             } else {
@@ -164,12 +242,18 @@ class SettingsActivity : AppCompatActivity() {
             val bridgeUrl = CodespaceBootstrapManager.bootstrap(
                 tokenForBootstrap,
                 repoFull,
+                applicationContext.assets.open("bridge-server.js")
+                    .bufferedReader(Charsets.UTF_8).use { it.readText() },
                 onStep = { step -> runOnUiThread { bootstrapStatus.text = step } },
                 onComplete = { msg ->
                     runOnUiThread { bootstrapStatus.text = msg }
                 }
             )
             prefs.saveBridgeUrl(bridgeUrl)
+            // Salva anche l'URL tunnel diretto per la connessione WebSocket
+            CodespaceBootstrapManager.lastTunnelUrl()?.let { tunnelUrl ->
+                prefs.saveBridgeTunnelUrl(tunnelUrl)
+            }
             bridgeAutoUrl.text = getString(R.string.settings_bridge_auto_url, bridgeUrl)
             bootstrapStatus.text = getString(R.string.settings_bridge_auto_url, bridgeUrl)
             prefs.saveOAuthToken(OAuthToken(accessToken = authToken, tokenType = "Bearer", scope = ""))
@@ -177,8 +261,8 @@ class SettingsActivity : AppCompatActivity() {
             android.util.Log.i("SettingsActivity", "Bootstrap OK, bridgeUrl=$bridgeUrl, avvio BridgeService")
             restartBridgeService()
         } catch (e: Exception) {
-            tokenStatus.text = getString(R.string.settings_bridge_error, e.localizedMessage ?: "errore")
-            bootstrapStatus.text = getString(R.string.settings_bridge_error, e.localizedMessage ?: "errore")
+            tokenStatus.text = getString(R.string.settings_bridge_error, e.localizedMessage ?: "Unknown error")
+            bootstrapStatus.text = getString(R.string.settings_bridge_error, e.localizedMessage ?: "Unknown error")
             android.util.Log.e("SettingsActivity", "Bootstrap fallito", e)
         }
     }
@@ -248,7 +332,8 @@ class SettingsActivity : AppCompatActivity() {
         try {
             val intent = Intent(this, BridgeService::class.java)
             stopService(intent)
-            startService(intent)
+            // Foreground start: evita "Background start not allowed" su Android 12+
+            androidx.core.content.ContextCompat.startForegroundService(this, intent)
         } catch (e: Exception) {
             android.util.Log.w("SettingsActivity", "Impossibile riavviare il bridge service", e)
         }

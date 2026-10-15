@@ -21,7 +21,7 @@ class BridgeWebSocketClient(
     private val listener: BridgeListener? = null
 ) {
     private var socket: WebSocket? = null
-    private var connected = false
+    @Volatile private var connected = false
     private var currentUrl: String? = null
     private var shouldReconnect = false
     private var reconnectAttempts = 0
@@ -72,7 +72,7 @@ class BridgeWebSocketClient(
                 Log.e(TAG, "Bridge WebSocket failed url=$currentUrl code=${response?.code} msg=${response?.message}", t)
                 connected = false
                 mainHandler.post {
-                    listener?.onError("WS fallito verso $currentUrl: ${t.message ?: t::class.java.simpleName}")
+                    listener?.onError("WebSocket connection to $currentUrl failed: ${t.message ?: t::class.java.simpleName}")
                     listener?.onDisconnected()
                 }
                 scheduleReconnect()
@@ -82,7 +82,7 @@ class BridgeWebSocketClient(
                 Log.w(TAG, "Bridge WebSocket closed url=$currentUrl code=$code reason=$reason")
                 connected = false
                 mainHandler.post {
-                    listener?.onError("WS chiuso ($code): $reason")
+                    listener?.onError("WebSocket closed ($code): $reason")
                     listener?.onDisconnected()
                 }
                 scheduleReconnect()
@@ -143,6 +143,7 @@ class BridgeWebSocketClient(
 
             BridgeMessage.MessageType.ERROR -> {
                 val err = message.payload["error"] as? String ?: "Bridge error"
+                Log.e(TAG, "Bridge reported error: $err")
                 listener?.onError(err)
             }
 
@@ -167,6 +168,11 @@ class BridgeWebSocketClient(
             return
         }
         active.send(gson.toJson(message))
+    }
+
+    fun sendIfConnected(message: BridgeMessage): Boolean {
+        val active = socket
+        return connected && active != null && active.send(gson.toJson(message))
     }
 
     fun authenticate(token: String) {

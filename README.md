@@ -1,6 +1,6 @@
 # cline-agent-mobile
 
-Android application for managing GitHub Codespaces and Cline AI from your mobile device.
+Android app for managing GitHub Codespaces and chatting with the Cline CLI running in a Codespace. The app provisions the bridge, publishes its port automatically, and supports OpenRouter free models with tool use.
 
 ## 🏗️ CI/CD Pipeline
 
@@ -121,15 +121,14 @@ To create signed release APKs, add your signing keystore:
 
 ### CI/CD Status
 
-Check the build status at: https://github.com/yourusername/cline-agent-mobile/actions
+Check the build status at: https://github.com/criscard90/cline-agent-mobile/actions
 
 ---
 
 ## 🔒 Security
 
-- OAuth tokens encrypted with Android Keystore
-- API keys encrypted with EncryptedSharedPreferences
-- All API communication over HTTPS/WHS
+- GitHub and OpenRouter credentials, plus local chat history, are stored in Android EncryptedSharedPreferences backed by Android Keystore.
+- GitHub and OpenRouter API calls use HTTPS; the bridge connection uses WSS.
 
 ## 📋 Project Structure
 
@@ -152,11 +151,12 @@ cline-agent-mobile/
 │   │   │   └── drawable/
 │   │   └── AndroidManifest.xml
 │   └── build.gradle
-├── bridge/ (Node.js bridge server)
+├── bridge/ (Node.js WebSocket bridge and automatic port setup)
 │   ├── server.js
+│   ├── configure-public-port.sh
 │   ├── package.json
-│   └── .devcontainer/
-│       └── devcontainer.json
+│   └── test.js
+├── .devcontainer/devcontainer.json
 ├── .github/workflows/ (CI/CD)
 │   └── workflow.yml
 └── README.md
@@ -164,46 +164,65 @@ cline-agent-mobile/
 
 ## ✨ Features
 
-- GitHub OAuth 2.0 authentication
-- Codespace management (list, create, start, stop, restart, delete)
-- Chat workspace with Cline AI
-- Action cards for command approval
-- Diff viewer for file changes
-- Encrypted API key storage
-- Free tier AI providers (OpenRouter, Ollama, Gemini)
+- GitHub PAT verification and Codespace management (list, create, start, stop, delete, open in browser).
+- Chat with Cline CLI running in the selected Codespace, with streamed responses.
+- A visible “Cline is processing” indicator while a response is being generated.
+- OpenRouter API-key verification and model selection from the current free, tool-capable catalog.
+- Markdown rendering for assistant responses, including tables.
+- Encrypted local storage for credentials, selected model, and chat history.
 
-### 💬 Collega la Chat a Cline — setup automatico a solo PAT
+### 💬 Chat with Cline and free OpenRouter models
 
-La chat parla con un **bridge server** (`bridge/server.js`) che gira dentro il tuo GitHub Codespace. L'impostazione è automatica: l'utente inserisce SOLO il PAT GitHub e l'app provvede da sola a creare/avviare il codespace, pubblicare la porta 3000 e ottenere l'URL del bridge.
+The chat runs the Cline CLI in a Codespace through `bridge/server.js`. You need a GitHub PAT with access to the repository and Codespaces, plus an OpenRouter API key for AI requests. The PAT alone does not provide access to models. GitHub may charge for Codespace usage.
 
-### 1. In Settings, inserisci SOLO il PAT GitHub
+### 1. Configure credentials
 
-Inserisci il token (opzionale: `ghp_…` oppure `github_pat_…`) e tocca **Salva e verifica**.
-L'app verifica che il token sia valido (scope `repo`, `codespace`) e lo conserva.
+- In Settings, enter a GitHub PAT with the `repo` and `codespace` scopes, then tap **Save and verify**. The token must be able to read and update bridge files in the selected repository and create or start Codespaces.
+- Create a key at [OpenRouter](https://openrouter.ai/keys), paste it into the OpenRouter section, and tap **Verify and save**. The key is stored encrypted on the phone.
 
-### 2. Bootstrap automatico (a clic)
+### 2. Automatic bootstrap
 
-Toca **Avvia bootstrap Codespace**. L'app:
-1. cerca un codespace per questo repository (crea se manca, avvia se fermo);
-2. attende che sia davvero in esecuzione (poll, ~2 min);
-3. pubblica la porta 3000 del bridge come **public**;
-4. calcola l'URL `wss://<codename>-3000.app.github.dev`;
-5. salva l'URL e riavvia il servizio bridge, che si collega e autentica.
+Tap **Start Codespace bootstrap** and choose the repository configured in Settings. The app:
+1. updates `bridge/server.js`, `bridge/package.json`, `bridge/configure-public-port.sh`, and `.devcontainer/devcontainer.json` in the repository;
+2. creates a Codespace if no suitable one exists, or starts an existing stopped one;
+3. uses the devcontainer lifecycle to install the Cline CLI if needed, start the bridge, and automatically make port 3000 public without opening the Codespace;
+4. verifies that the bridge's HTTP endpoint responds, then saves its WSS URL and starts the Android service.
 
-### 3. Apri Chat
+If the bridge configuration changes and a replacement Codespace is required, bootstrap verifies the new bridge before stopping the previous Codespace; the old Codespace is not deleted. Organization policies may restrict public port forwarding.
 
-- Stato verde "Connesso e autenticato": puoi parlare con Cline.
-- L'URL del bridge è calcolato automaticamente; se per qualche motivo ti serve un URL manuale, puoi ottenerlo dal pannello PORTS dello codespace (Settings → impostazione manuale).
+### 3. Choose a model and chat
 
-### Note e limitazioni
+- In Chat, tap the model selector to load OpenRouter models listed as free and declaring tool support. Model availability, limits, and pricing may change.
+- Send a message: the bridge starts the Cline CLI in the Codespace repository directory and streams the response. The selected model applies to new requests.
+- The OpenRouter key is sent to the bridge only for a request; Cline uses a temporary configuration directory that is removed when the task ends.
+- Assistant responses are rendered as Markdown, including lists, code blocks, links, and tables.
+- Create multiple chats for each Codespace with the **New chat** button, then use the chat selector to switch between them. Chats and their Cline prompt context are kept separate by conversation ID and configured bridge URL, so changing Codespaces shows that Codespace's own conversations.
+- Each chat's messages and active selection are stored locally in encrypted form and remain available when you close and reopen the Chat screen. Existing single-chat history is migrated automatically. Conversations are not synchronized to the cloud.
 
-- Il bridge (`bridge/server.js`) deve girare sulla porta 3000 nello codespace (il devcontainer lo fa all'avvio: `postStartCommand`).
-- **Multi-turn**: ogni turno inietta il recente contesto della conversazione in una sessione Cline fresca (bug noto della Cline CLI dove il resume `--json --id` è rotto — cline/cline#10856). Costa qualche token in input.
-- **Stop**: il pulsante stop termina il processo Cline in esecuzione.
-- Android blocca `ws://` in cleartext — per test su LAN serve una network security config; `wss://` (Codespaces) funziona out of the box.
+### Notes and limitations
+
+- **Bridge security**: port 3000 is public to allow access from the phone; WebSocket requests require GitHub PAT authentication. Protect the token and do not share the bridge URL.
+- **Tool approval**: Cline currently runs with automatic action approval (`--auto-approve true`). Use it only in repositories and Codespaces where you authorize Cline to edit files and run commands.
+- **Multi-turn context**: for each request, the bridge starts a fresh Cline session and includes recent conversation messages in the prompt. Chat history stored on the phone is not synchronized with or restored as a Cline session in the Codespace.
+- **Stop**: the Stop button attempts to terminate the running Cline process.
+- The Codespace bridge requires Node.js/npm, GitHub CLI, and `setsid`; it uses the Node 18 devcontainer or a compatible image. The app connects to the bridge over WSS.
+
+## Development and testing
+
+On Windows:
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug
+npm --prefix bridge test
+node --check bridge/server.js
+```
+
+The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`. To install it on an Android device connected over ADB:
+
+```powershell
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
 
 ## 📝 License
 
 MIT License - see LICENSE file for details.
-
-# cline-agent-mobile

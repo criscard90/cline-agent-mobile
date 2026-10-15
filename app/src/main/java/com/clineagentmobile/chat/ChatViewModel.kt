@@ -40,6 +40,22 @@ class ChatViewModel : ViewModel() {
         _messages.value = (_messages.value ?: emptyList()) + message
     }
 
+    fun startGeneration() {
+        _isGenerating.value = true
+    }
+
+    fun restoreMessages(messages: List<Message>) {
+        if (_messages.value.isNullOrEmpty() && messages.isNotEmpty()) {
+            _messages.value = messages
+        }
+    }
+
+    fun replaceMessages(messages: List<Message>) {
+        streamingId = null
+        _isGenerating.value = false
+        _messages.value = messages
+    }
+
     /** Start (or extend) the in-progress assistant bubble while Cline streams. */
     fun appendStream(delta: String) {
         val list = (_messages.value ?: emptyList()).toMutableList()
@@ -130,4 +146,3 @@ class ChatViewModel : ViewModel() {
         _error.value = ""
     }
 }
-

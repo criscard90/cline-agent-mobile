@@ -6,6 +6,7 @@ import android.os.Binder
 import android.os.IBinder
 import android.util.Log
 import com.clineagentmobile.ClineAgentMobileApp
+import com.clineagentmobile.R
 import com.clineagentmobile.model.ActionCard
 import com.clineagentmobile.model.BridgeMessage
 import com.clineagentmobile.model.Codespace
@@ -115,22 +116,57 @@ class BridgeService : Service() {
         coroutineScope.launch { connectToBridge() }
     }
 
+    private fun startAsForeground() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                val channel = android.app.NotificationChannel(
+                    CHANNEL_ID,
+                    getString(R.string.bridge_notif_channel),
+                    android.app.NotificationManager.IMPORTANCE_LOW
+                )
+                val nm = getSystemService(android.app.NotificationManager::class.java)
+                nm.createNotificationChannel(channel)
+            }
+            val notification = androidx.core.app.NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_logo)
+                .setContentTitle(getString(R.string.bridge_notif_title))
+                .setContentText(getString(R.string.bridge_notif_text))
+                .setOngoing(true)
+                .build()
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIF_ID,
+                    notification,
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                )
+            } else {
+                startForeground(NOTIF_ID, notification)
+            }
+            Log.d(TAG, "BridgeService in foreground")
+        } catch (e: Exception) {
+            Log.e(TAG, "Impossibile mettere BridgeService in foreground", e)
+        }
+    }
+
     private suspend fun connectToBridge() {
         try {
             val token = encryptedPrefs.getOAuthToken()?.accessToken
             val bridgeUrl = encryptedPrefs.getBridgeUrl()
-            if (bridgeUrl.isNullOrEmpty()) {
+            val bridgeTunnelUrl = encryptedPrefs.getBridgeTunnelUrl()
+            if (bridgeUrl.isNullOrEmpty() && bridgeTunnelUrl.isNullOrEmpty()) {
                 Log.w(TAG, "No bridge URL configured")
                 isRunning = false
                 return
             }
             bridgeClient = BridgeWebSocketClient(listener = bridgeListener)
-            bridgeClient?.connect(bridgeUrl)
+            // Preferisce l'URL tunnel diretto per la connessione WebSocket
+            val urlToUse = bridgeTunnelUrl ?: bridgeUrl
+            bridgeClient?.connect(urlToUse ?: "")
             if (!token.isNullOrBlank()) {
                 bridgeClient?.authenticate(token)
             }
             isRunning = true
-            Log.d(TAG, "Bridge service started")
+            Log.d(TAG, "Bridge service started, url=$urlToUse")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start bridge service", e)
             isRunning = false
@@ -139,6 +175,9 @@ class BridgeService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "BridgeService onStartCommand")
+        // Prima di tutto: notifica foreground, sennò Android killa il servizio
+        // ("Stopping service due to app idle") e la chat resta Disconnesso.
+        startAsForeground()
         return START_STICKY
     }
 
@@ -163,8 +202,16 @@ class BridgeService : Service() {
         bridgeClient?.send(BridgeMessage.command(command))
     }
 
-    fun sendChatMessage(text: String) {
-        bridgeClient?.send(BridgeMessage.chatMessage(Message.user(text)))
+    fun sendChatMessage(
+        text: String,
+        model: String,
+        apiKey: String,
+        conversationId: String
+    ): Boolean {
+        if (lastState.status != BridgeState.Status.AUTHENTICATED) return false
+        return bridgeClient?.sendIfConnected(
+            BridgeMessage.chatMessage(Message.user(text), model, apiKey, conversationId)
+        ) ?: false
     }
 
     fun sendChatStop() {
@@ -185,6 +232,7 @@ class BridgeService : Service() {
 
     companion object {
         private const val TAG = "BridgeService"
+        private const val CHANNEL_ID = "bridge_service"
+        private const val NOTIF_ID = 42
     }
 }
-
